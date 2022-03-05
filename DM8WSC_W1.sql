@@ -56,7 +56,119 @@ from(
 where table2.rnum = 1;
 
 -- 6. Which item was purchased first by the customer after they became a member?
+SELECT table2.customer_id, table2.product_id
+FROM(
+  SELECT 
+      table1.customer_id,
+      table1.product_id,
+      table1.order_date,
+      table1.join_date,
+      (table1.order_date - table1.join_date) as days_from_join,
+      row_number() over(partition by table1.customer_id) as rownum
+  FROM(
+      SELECT
+          sales.customer_id,
+          sales.product_id,
+          sales.order_date,
+          members.join_date
+      FROM dannys_diner.sales
+      LEFT JOIN dannys_diner.members ON sales.customer_id = members.customer_id
+  ) as table1
+  WHERE (table1.order_date - table1.join_date) >= 0
+  ORDER BY 
+      table1.customer_id desc,
+      table1.order_date asc
+) table2
+WHERE table2.rownum = 1;
+
 -- 7. Which item was purchased just before the customer became a member?
+ SELECT table2.customer_id, table2.product_id
+ FROM (
+ SELECT 
+      table1.customer_id,
+      table1.product_id,
+      table1.order_date,
+      table1.join_date,
+      (table1.order_date - table1.join_date) as days_from_join,
+      row_number() over(partition by table1.customer_id) as rownum
+  FROM(
+      SELECT
+          sales.customer_id,
+          sales.product_id,
+          sales.order_date,
+          members.join_date
+      FROM dannys_diner.sales
+      LEFT JOIN dannys_diner.members ON sales.customer_id = members.customer_id
+    order by sales.order_date desc
+  ) as table1
+  WHERE (table1.order_date - table1.join_date) < 0
+  ORDER BY 
+      table1.customer_id desc,
+      table1.order_date asc
+) table2
+WHERE table2.rownum = 1;
+
 -- 8. What is the total items and amount spent for each member before they became a member?
+ SELECT 
+ 	table2.customer_id, 
+    COUNT(DISTINCT table2.product_id) as n_items,
+    SUM(table2.product_id * menu.price) as amount
+ FROM (
+   SELECT 
+        table1.customer_id,
+        table1.product_id,
+        table1.order_date,
+        table1.join_date,
+        (table1.order_date - table1.join_date) as days_from_join
+    FROM(
+        SELECT
+            sales.customer_id,
+            sales.product_id,
+            sales.order_date,
+            members.join_date
+        FROM dannys_diner.sales
+        LEFT JOIN dannys_diner.members ON sales.customer_id = members.customer_id
+      order by sales.order_date desc
+    ) as table1
+    WHERE (table1.order_date - table1.join_date) < 0
+    ORDER BY 
+        table1.customer_id desc,
+        table1.order_date asc
+) table2
+LEFT JOIN dannys_diner.menu ON table2.product_id = menu.product_id
+GROUP BY table2.customer_id;
+
 -- 9.  If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
+FROM(
+	SELECT 
+        table1.customer_id,
+        table1.product_id,
+        table1.order_date,
+        table1.join_date,
+        (table1.order_date - table1.join_date) as days_from_join,
+        menu.product_name,
+        menu.price,
+        CASE 
+        	WHEN menu.product_name = 'sushi' then 2
+            ELSE 1 
+        END as score_weights
+    FROM(
+        SELECT
+            sales.customer_id,
+            sales.product_id,
+            sales.order_date,
+            members.join_date
+        FROM dannys_diner.sales
+        LEFT JOIN dannys_diner.members ON sales.customer_id = members.customer_id
+      order by sales.order_date desc
+    ) as table1
+    LEFT JOIN dannys_diner.menu on table1.product_id = menu.product_id
+	WHERE (table1.order_date - table1.join_date) >= 0
+    ORDER BY 
+        table1.customer_id desc,
+        table1.order_date asc
+  ) table2
+ GROUP BY table2.customer_id
+ ORDER BY scoring desc, table2.customer_id desc;
+
 -- 10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?
