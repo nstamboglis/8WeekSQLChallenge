@@ -159,7 +159,10 @@ LEFT JOIN dannys_diner.menu ON table2.product_id = menu.product_id
 GROUP BY table2.customer_id;
 
 -- 9.  If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
-FROM(
+SELECT
+	sum(table2.price * table2.score_weights) as total_score,
+    table2.customer_id
+ FROM(
 	SELECT 
         table1.customer_id,
         table1.product_id,
@@ -186,10 +189,9 @@ FROM(
 	WHERE (table1.order_date - table1.join_date) >= 0
     ORDER BY 
         table1.customer_id DESC,
-        table1.order_date asc
-  ) table2
- GROUP BY table2.customer_id
- ORDER BY scoring DESC, table2.customer_id DESC;
+        table1.order_date asc) AS table2
+  GROUP BY table2.customer_id
+  ORDER BY total_score desc;
 
 -- 10. In the first week after a customer joins the program (including their join date) they earn 2x points ON all items, not just sushi - how many points do customer A and B have at the end of January?
 -- ATTENTION: I assume that every item gets the 2x bonus, and only sushi remains 2x afterwords.
