@@ -1,23 +1,7 @@
 -- Author: Nick
 -- Date: Mar 2022
 
--- Description: This file contains the result queries for DM's 8WSC Week 2.
-
--- DATA PREP
--- Before you start writing your SQL queries however - you might want to investigate the data, 
--- you may want to do something with some of those null values and data types in the customer_orders and runner_orders tables!
--- Fix customer_order.exclusions 
--- Fix customer_order.extras 
-UPDATE pizza_runner.customer_orders  
-SET exclusions = null
-WHERE exclusions = 'null' or exclusions = '';
-
-UPDATE pizza_runner.customer_orders  
-SET extras = null
-WHERE extras = 'null' or extras = '';
-
-
--- Here I run an alter table to change data types. I also run a SQL UPDATE to change data values prior running.
+-- Description: This file contains the queries for DM's 8WSC Week 2 cleaned databases.
 
 
 -- A. Pizza Metrics
