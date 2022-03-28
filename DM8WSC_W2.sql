@@ -3,15 +3,76 @@
 
 -- Description: This file contains the queries for DM's 8WSC Week 2 cleaned databases.
 
+-- NOTE:
+-- 	1. I assume that order ID 4 of pizza_runner.customer_orders is not replicated for pizza_id 1 (the orders of the same pizzas were made at the same time). In real life I'd ask DBAs for clarification.
 
 -- A. Pizza Metrics
 -- How many pizzas were ordered?
+-- NOTE: I assume that the question refers to the total number of orders (and not how many orders were not cancelled)
+select 
+	count(co.pizza_id) as n_orders
+from pizza_runner.customer_orders co;
+
 -- How many unique customer orders were made?
+select 
+	count(distinct concat(co.pizza_id, co.exclusions, co.extras)) as n_orders_unique
+from pizza_runner.customer_orders co;
+
 -- How many successful orders were delivered by each runner?
+select 
+	runner_orders.runner_id, count(customer_orders.order_id) as n_orders
+from pizza_runner.customer_orders 
+left join pizza_runner.runner_orders 
+on customer_orders.order_id = runner_orders.order_id
+where runner_orders.cancellation is null
+group by runner_orders.runner_id
+order by runner_orders.runner_id asc;
+
 -- How many of each type of pizza was delivered?
+select count(customer_orders.pizza_id) as n_orders, customer_orders.pizza_id 
+from pizza_runner.customer_orders 
+left join pizza_runner.runner_orders 
+on customer_orders.order_id = runner_orders.order_id
+where runner_orders.cancellation is null
+group by customer_orders.pizza_id
+order by customer_orders.pizza_id 
+
 -- How many Vegetarian and Meatlovers were ordered by each customer?
+select customer_orders.customer_id, pizza_names.pizza_name, count(customer_orders.pizza_id) as n_orders
+from pizza_runner.customer_orders 
+left join pizza_runner.pizza_names
+on customer_orders.pizza_id  = pizza_names.pizza_id 
+group by customer_orders.customer_id, pizza_names.pizza_name
+order by customer_orders.customer_id, pizza_names.pizza_name;
+
 -- What was the maximum number of pizzas delivered in a single order?
+select count(customer_orders.pizza_id) as count_n_orders, customer_orders.order_id 
+from pizza_runner.customer_orders
+left join pizza_runner.runner_orders 
+on customer_orders.order_id = runner_orders.order_id
+where runner_orders.cancellation is null
+group by customer_orders.order_id
+order by count_n_orders desc
+limit 1;
+
 -- For each customer, how many delivered pizzas had at least 1 change and how many had no changes?
+-- NOTE: I assume the questions refers to the fields customers_orders.addition or customer_orders.extra. 
+select count(tab1.pizza_id) as pizza_count, tab1.customer_id, tab1.changes 
+from(
+	select 
+		customer_orders.pizza_id, 
+		customer_orders.customer_id, 
+		coalesce(char_length(translate(exclusions, ', ', '')), 0) as n_exclusions, 
+		coalesce(char_length(translate(extras, ', ', '')), 0) as n_extras,
+		coalesce(char_length(translate(exclusions, ', ', '')), 0) + coalesce(char_length(translate(extras, ', ', '')), 0) as n_changes,
+		case when coalesce(char_length(translate(exclusions, ', ', '')), 0) + coalesce(char_length(translate(extras, ', ', '')), 0) > 0 then '1' else '0' end changes
+	from pizza_runner.customer_orders
+	left join pizza_runner.runner_orders 
+	on customer_orders.order_id = runner_orders.order_id
+	where runner_orders.cancellation is null) tab1
+group by tab1.customer_id, tab1.changes 
+order by pizza_count desc;
+
 -- How many pizzas were delivered that had both exclusions and extras?
 -- What was the total volume of pizzas ordered for each hour of the day?
 -- What was the volume of orders for each day of the week?
@@ -55,3 +116,7 @@
 -- E. Bonus Questions
 -- If Danny wants to expand his range of pizzas - how would this impact the existing data design? Write an INSERT statement to demonstrate what would happen if a new Supreme pizza with all the toppings was added to the Pizza Runner menu?
 
+
+-- NOTES
+-- 1. I like the realism of the questions. There was some amibguity (duplicated rows? Meaning of some questions). This ambiguity is what you get in real life.
+-- 2. On the pizza changes question I assume he refers to the fields customers_orders.addition or customer_orders.extra. 
