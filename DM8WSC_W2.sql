@@ -74,8 +74,54 @@ group by tab1.customer_id, tab1.changes
 order by pizza_count desc;
 
 -- How many pizzas were delivered that had both exclusions and extras?
+select count(pizza_id)
+from(
+	select 
+		customer_orders.pizza_id, 
+		customer_orders.customer_id, 
+		coalesce(char_length(translate(exclusions, ', ', '')), 0) as n_exclusions, 
+		coalesce(char_length(translate(extras, ', ', '')), 0) as n_extras,
+		coalesce(char_length(translate(exclusions, ', ', '')), 0) + coalesce(char_length(translate(extras, ', ', '')), 0) as n_changes,
+		case when coalesce(char_length(translate(exclusions, ', ', '')), 0) + coalesce(char_length(translate(extras, ', ', '')), 0) > 0 then '1' else '0' end changes
+	from pizza_runner.customer_orders
+	left join pizza_runner.runner_orders 
+	on customer_orders.order_id = runner_orders.order_id
+	where runner_orders.cancellation is null
+	) tab1
+where tab1.n_exclusions >0 and tab1.n_extras >0;
+
 -- What was the total volume of pizzas ordered for each hour of the day?
+select tab1.order_hour , count(tab1.pizza_id) as n_pizzas
+from(
+	select 
+		customer_orders.pizza_id, 
+		customer_orders.customer_id, 
+		coalesce(char_length(translate(exclusions, ', ', '')), 0) as n_exclusions, 
+		coalesce(char_length(translate(extras, ', ', '')), 0) as n_extras,
+		coalesce(char_length(translate(exclusions, ', ', '')), 0) + coalesce(char_length(translate(extras, ', ', '')), 0) as n_changes,
+		case when coalesce(char_length(translate(exclusions, ', ', '')), 0) + coalesce(char_length(translate(extras, ', ', '')), 0) > 0 then '1' else '0' end changes,
+		extract(hour from customer_orders.order_time) as order_hour
+	from pizza_runner.customer_orders
+) tab1 
+group by tab1.order_hour 
+order by tab1.order_hour asc;
+
 -- What was the volume of orders for each day of the week?
+select tab1.order_dow, count(tab1.pizza_id) as n_pizzas
+from(
+	select 
+		customer_orders.pizza_id, 
+		customer_orders.customer_id, 
+		coalesce(char_length(translate(exclusions, ', ', '')), 0) as n_exclusions, 
+		coalesce(char_length(translate(extras, ', ', '')), 0) as n_extras,
+		coalesce(char_length(translate(exclusions, ', ', '')), 0) + coalesce(char_length(translate(extras, ', ', '')), 0) as n_changes,
+		case when coalesce(char_length(translate(exclusions, ', ', '')), 0) + coalesce(char_length(translate(extras, ', ', '')), 0) > 0 then '1' else '0' end changes,
+		to_char(customer_orders.order_time, 'Day') as order_dow
+	from pizza_runner.customer_orders
+) tab1 
+group by tab1.order_dow 
+order by tab1.order_dow desc;
+
 -- B. Runner and Customer Experience
 -- How many runners signed up for each 1 week period? (i.e. week starts 2021-01-01)
 -- What was the average time in minutes it took for each runner to arrive at the Pizza Runner HQ to pickup the order?
