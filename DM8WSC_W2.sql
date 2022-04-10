@@ -124,14 +124,54 @@ order by tab1.order_dow desc;
 
 -- B. Runner and Customer Experience
 -- How many runners signed up for each 1 week period? (i.e. week starts 2021-01-01)
-select  ((registration_date - date '2021-01-01') / 7)+1 as my_date, count(runners.runner_id) 
+select  
+	((registration_date - date '2021-01-01') / 7)+1 as my_date, 
+	count(runners.runner_id) 
 from pizza_runner.runners
 group by my_date
 order by my_date asc;
 
 -- What was the average time in minutes it took for each runner to arrive at the Pizza Runner HQ to pickup the order?
+select distinct on(tab1.order_id) tab1.order_id, round( extract(epoch from (tab1.order_time_adj - tab1.order_time_dj)) /60 ::numeric,2) as minutes
+from(
+	select customer_orders.order_id, to_timestamp(cast(customer_orders.order_time as text), 'yyyy/mm/dd hh24:mi:ss') as order_time_adj, to_timestamp(runner_orders.pickup_time, 'yyyy/mm/dd hh24:mi:ss') as order_time_dj
+	from pizza_runner.customer_orders
+	left join pizza_runner.runner_orders
+	on customer_orders.order_id = runner_orders.order_id
+	where runner_orders.cancellation is null
+) tab1
+order by tab1.order_id asc;
+
 -- Is there any relationship between the number of pizzas and how long the order takes to prepare?
+select corr(tab3.minutes, tab2.n_pizzas)
+from(
+	select distinct on(tab1.order_id) tab1.order_id, round( extract(epoch from (tab1.order_time_adj - tab1.order_time_dj)) /60 ::numeric,2) as minutes
+	from(
+		select customer_orders.order_id, to_timestamp(cast(customer_orders.order_time as text), 'yyyy/mm/dd hh24:mi:ss') as order_time_adj, to_timestamp(runner_orders.pickup_time, 'yyyy/mm/dd hh24:mi:ss') as order_time_dj
+		from pizza_runner.customer_orders
+		left join pizza_runner.runner_orders
+		on customer_orders.order_id = runner_orders.order_id
+		where runner_orders.cancellation is null
+	) tab1
+order by tab1.order_id asc) tab3
+left join (
+	select customer_orders.order_id, count(customer_orders.pizza_id) as n_pizzas
+	from pizza_runner.customer_orders
+	left join pizza_runner.runner_orders
+	on customer_orders.order_id = runner_orders.order_id
+	where runner_orders.cancellation is null
+	group by customer_orders.order_id
+) tab2 
+on tab3.order_id = tab2.order_id;
+
 -- What was the average distance travelled for each customer?
+select distinct on(customer_orders.order_id) customer_orders.customer_id, round(avg(runner_orders.distance),2) as mean_distance
+from pizza_runner.customer_orders
+left join pizza_runner.runner_orders
+on customer_orders.order_id = runner_orders.order_id
+where runner_orders.cancellation is null
+group by customer_orders.customer_id, customer_orders.order_id; 
+
 -- What was the difference between the longest and shortest delivery times for all orders?
 -- What was the average speed for each runner for each delivery and do you notice any trend for these values?
 -- What is the successful delivery percentage for each runner?
