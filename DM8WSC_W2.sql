@@ -173,8 +173,43 @@ where runner_orders.cancellation is null
 group by customer_orders.customer_id, customer_orders.order_id; 
 
 -- What was the difference between the longest and shortest delivery times for all orders?
+select max(tab2.minutes) - min(tab2.minutes) as delta
+from(
+	select distinct on(tab1.order_id) tab1.order_id, round( extract(epoch from (tab1.order_time_dj - tab1.order_time_adj)) /60 ::numeric,2) as minutes
+	from(
+		select customer_orders.order_id, to_timestamp(cast(customer_orders.order_time as text), 'yyyy/mm/dd hh24:mi:ss') as order_time_adj, to_timestamp(runner_orders.pickup_time, 'yyyy/mm/dd hh24:mi:ss') as order_time_dj
+		from pizza_runner.customer_orders
+		left join pizza_runner.runner_orders
+		on customer_orders.order_id = runner_orders.order_id
+		where runner_orders.cancellation is null
+	) tab1)
+tab2;
+
 -- What was the average speed for each runner for each delivery and do you notice any trend for these values?
+select 
+	distinct customer_orders.order_time, customer_orders.order_id, runner_orders.runner_id, 
+	(runner_orders.distance / runner_orders.duration) as speed
+from pizza_runner.customer_orders
+left join pizza_runner.runner_orders
+on customer_orders.order_id = runner_orders.order_id
+where runner_orders.cancellation is null
+order by customer_orders.order_id;
+-- Speed always increasing for runner number 2
+
 -- What is the successful delivery percentage for each runner?
+select 
+	tab1.runner_id, 
+	round((tab1.n_cancellations / tab1.n_orders) *100::numeric, 2) as perc_canc
+from(
+	select 
+		count(*)::numeric as n_orders, 
+		count(runner_orders.cancellation)::numeric as n_cancellations,
+		runner_orders.runner_id
+	from pizza_runner.runner_orders
+	group by runner_orders.runner_id
+) tab1
+order by perc_canc desc;
+
 -- C. Ingredient Optimisation
 -- What are the standard ingredients for each pizza?
 -- What was the most commonly added extra?
