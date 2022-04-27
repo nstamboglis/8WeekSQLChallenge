@@ -212,7 +212,35 @@ order by perc_canc desc;
 
 -- C. Ingredient Optimisation
 -- What are the standard ingredients for each pizza?
+select 
+	tab4.pizza_name,
+	array_to_string(array_agg(tab3.topping_name), ', ') as topping_string
+	--tab3.topping_name
+from(
+	select 
+		tab1.pizza_id, 
+		tab2.topping_name 
+	from(
+		select pizza_id, cast(unnest(string_to_array(toppings, ',')) as int) AS my_topping
+		from pizza_runner.pizza_recipes) tab1
+	left join pizza_runner.pizza_toppings tab2
+	on my_topping = tab2.topping_id) tab3
+left join pizza_runner.pizza_names tab4
+on tab3.pizza_id = tab4.pizza_id
+group by tab4.pizza_name;
+
 -- What was the most commonly added extra?
+select 
+	count(*) as n_times,
+	extras
+from (
+	select 
+		unnest(string_to_array(co.extras, ',')) as extras
+	from pizza_runner.customer_orders co
+	where co.extras is not null) tab1
+group by extras
+order by extras desc;
+
 -- What was the most common exclusion?
 -- Generate an order item for each record in the customers_orders table in the format of one of the following:
 -- Meat Lovers
