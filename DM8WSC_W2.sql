@@ -254,6 +254,49 @@ group by exclusions
 order by exclusions desc;
 
 -- Generate an order item for each record in the customers_orders table in the format of one of the following:
+select
+	replace(pizza_array, 'EXTRA {NULL} EXCLUDE {NULL}', '') as pizza_name_adj,
+	tab3.order_id,
+	tab3.customer_id,
+	tab3.order_time
+from(
+select
+	tab2.order_id,
+	tab2.customer_id,
+	tab2.order_time,
+	concat(tab2.pizza_name, ' EXTRA ',	cast(array_agg(extras_name) as varchar(50)), ' EXCLUDE ', array_agg(exclusions_name)) as pizza_array
+from(
+	select 
+		DISTINCT ON (tab1.order_id, tab1.customer_id, tab1.order_time, tab1.pizza_name, pt.topping_name, ptexc.topping_name)	
+		tab1.order_id,
+		tab1.customer_id,
+		tab1.order_time,
+		tab1.pizza_name,
+		pt.topping_name as extras_name,
+		ptexc.topping_name as exclusions_name
+	from(
+		select
+			co.order_id,
+			co.customer_id,
+			co.order_time,
+			pn.pizza_name,
+			unnest(string_to_array(coalesce(co.extras, '0'), ',')) as extras,
+			unnest(string_to_array(coalesce(co.exclusions, '0'), ',')) as exclusions
+		from pizza_runner.customer_orders co 
+		left join pizza_runner.pizza_names pn 
+		on pn.pizza_id  = co.pizza_id
+	) tab1
+	left join pizza_runner.pizza_toppings pt 
+	on cast(pt.topping_id as character) = tab1.extras 
+	left join pizza_runner.pizza_toppings ptexc 
+	on cast(ptexc.topping_id as character) = tab1.exclusions 
+) tab2
+group by order_id, 	tab2.customer_id, 	tab2.order_time, tab2.pizza_name
+)tab3
+;
+
+select * 
+from pizza_runner.customer_orders co; 
 -- Meat Lovers
 -- Meat Lovers - Exclude Beef
 -- Meat Lovers - Extra Bacon
