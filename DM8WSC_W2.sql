@@ -242,6 +242,17 @@ group by extras
 order by extras desc;
 
 -- What was the most common exclusion?
+select 
+	count(*) as n_times,
+	exclusions
+from (
+	select 
+		unnest(string_to_array(co.exclusions, ',')) as exclusions
+	from pizza_runner.customer_orders co
+	where co.exclusions is not null) tab1
+group by exclusions
+order by exclusions desc;
+
 -- Generate an order item for each record in the customers_orders table in the format of one of the following:
 -- Meat Lovers
 -- Meat Lovers - Exclude Beef
