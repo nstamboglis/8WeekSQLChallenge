@@ -254,6 +254,10 @@ group by exclusions
 order by exclusions desc;
 
 -- Generate an order item for each record in the customers_orders table in the format of one of the following:
+-- Meat Lovers
+-- Meat Lovers - Exclude Beef
+-- Meat Lovers - Extra Bacon
+-- Meat Lovers - Exclude Cheese, Bacon - Extra Mushroom, Peppers
 select
 	replace(pizza_array, 'EXTRA {NULL} EXCLUDE {NULL}', '') as pizza_name_adj,
 	tab3.order_id,
@@ -295,14 +299,53 @@ group by order_id, 	tab2.customer_id, 	tab2.order_time, tab2.pizza_name
 )tab3
 ;
 
-select * 
-from pizza_runner.customer_orders co; 
--- Meat Lovers
--- Meat Lovers - Exclude Beef
--- Meat Lovers - Extra Bacon
--- Meat Lovers - Exclude Cheese, Bacon - Extra Mushroom, Peppers
 -- Generate an alphabetically ordered comma separated ingredient list for each pizza order from the customer_orders table and add a 2x in front of any relevant ingredients
 -- For example: "Meat Lovers: 2xBacon, Beef, ... , Salami"
+select 	
+pr.pizza_id,
+	unnest(string_to_array(coalesce(pr.toppings, '0'), ',')) as original_toppings
+from pizza_runner.pizza_recipes pr;
+
+select 
+	tab1.order_id,
+	pn.pizza_name,
+	tab1.custom_toppings,
+	sum(tab1.topping_adder)
+from(
+	select 
+		co.order_id,
+		co.pizza_id,
+		unnest(string_to_array(coalesce(pr.toppings , '0'), ',')) as custom_toppings,
+		1 as topping_adder
+	from 
+		pizza_runner.pizza_recipes pr
+	right join
+		pizza_runner.customer_orders co 
+	on pr.pizza_id = co.pizza_id
+	union all
+	select 
+		co.order_id ,
+		co.pizza_id,
+		unnest(string_to_array(coalesce(co.exclusions, '0'), ',')) as custom_toppings,
+		-1 as topping_adder
+	from pizza_runner.customer_orders co
+	union all
+	select 
+		co.order_id ,
+		co.pizza_id,
+		unnest(string_to_array(coalesce(co.extras, '0'), ',')) as custom_toppings,	
+		1 as topping_adder
+	from pizza_runner.customer_orders co
+) tab1
+left join pizza_runner.pizza_names pn 
+on tab1.pizza_id = pn.pizza_id 
+--left join pizza_runner.pizza_toppings pt 
+--on tab1.custom_toppings = pt.topping_id 
+where tab1.custom_toppings != '0'
+group by tab1.order_id, pn.pizza_name, tab1.custom_toppings 
+;
+
+
 -- What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
 -- D. Pricing and Ratings
 -- If a Meat Lovers pizza costs $12 and Vegetarian costs $10 and there were no charges for changes - how much money has Pizza Runner made so far if there are no delivery fees?
@@ -328,3 +371,4 @@ from pizza_runner.customer_orders co;
 -- NOTES
 -- 1. I like the realism of the questions. There was some amibguity (duplicated rows? Meaning of some questions). This ambiguity is what you get in real life.
 -- 2. On the pizza changes question I assume he refers to the fields customers_orders.addition or customer_orders.extra. 
+-- 3. Importance of details: union vs union all
