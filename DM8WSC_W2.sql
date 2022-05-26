@@ -301,57 +301,199 @@ group by order_id, 	tab2.customer_id, 	tab2.order_time, tab2.pizza_name
 
 -- Generate an alphabetically ordered comma separated ingredient list for each pizza order from the customer_orders table and add a 2x in front of any relevant ingredients
 -- For example: "Meat Lovers: 2xBacon, Beef, ... , Salami"
-select 	
-pr.pizza_id,
-	unnest(string_to_array(coalesce(pr.toppings, '0'), ',')) as original_toppings
-from pizza_runner.pizza_recipes pr;
-
 select 
-	tab1.order_id,
-	pn.pizza_name,
-	tab1.custom_toppings,
-	sum(tab1.topping_adder)
+	concat(tab4.pizza_name, ': ', tab4.myingredients) as order_ingredient_list
+from(
+select 
+	tab3.order_id,
+	tab3.pizza_name, 
+	STRING_AGG(tab3.topping_adj, ', ') as myingredients
+from(
+	select 
+		tab2.order_id,
+		tab2.pizza_name,
+		case 
+			when tab2.occurences > 1 then concat(tab2.occurences, 'x', tab2.topping_name)
+			else tab2.topping_name
+		end as topping_adj
+	from(
+		select 
+			tab1.order_id,
+			pn.pizza_name,
+			tab1.custom_toppings,
+			pt.topping_name,
+			sum(tab1.topping_adder) as occurences
+		from(
+			select 
+				co.order_id,
+				co.pizza_id,
+				trim(unnest(string_to_array(coalesce(pr.toppings , '0'), ','))) as custom_toppings,
+				1 as topping_adder
+			from 
+				pizza_runner.pizza_recipes pr
+			right join
+				pizza_runner.customer_orders co 
+			on pr.pizza_id = co.pizza_id
+			union all
+			select 
+				co.order_id ,
+				co.pizza_id,
+				trim(unnest(string_to_array(coalesce(co.exclusions, '0'), ','))) as custom_toppings,
+				-1 as topping_adder
+			from pizza_runner.customer_orders co
+			union all
+			select 
+				co.order_id ,
+				co.pizza_id,
+				trim(unnest(string_to_array(coalesce(co.extras, '0'), ','))) as custom_toppings,	
+				1 as topping_adder
+			from pizza_runner.customer_orders co
+		) tab1
+		left join pizza_runner.pizza_names pn on tab1.pizza_id = pn.pizza_id 
+		left join pizza_runner.pizza_toppings pt on cast(tab1.custom_toppings as numeric) = pt.topping_id 
+		--left join pizza_runner.pizza_toppings pt 
+		--on tab1.custom_toppings = pt.topping_id 
+		where tab1.custom_toppings != '0'
+		group by tab1.order_id, pn.pizza_name, tab1.custom_toppings, pt.topping_name
+		order by tab1.order_id, pn.pizza_name, pt.topping_name
+	) tab2
+) tab3
+group by tab3.order_id, tab3.pizza_name
+) tab4;
+
+-- What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
+select 
+	tab2.topping_name,
+	sum(tab2.occurences) as occurences_aggr
+from(
+		select 
+			tab1.order_id,
+			pn.pizza_name,
+			tab1.custom_toppings,
+			pt.topping_name,
+			sum(tab1.topping_adder) as occurences
+		from(
+			select 
+				co.order_id,
+				co.pizza_id,
+				trim(unnest(string_to_array(coalesce(pr.toppings , '0'), ','))) as custom_toppings,
+				1 as topping_adder
+			from 
+				pizza_runner.pizza_recipes pr
+			right join
+				pizza_runner.customer_orders co 
+			on pr.pizza_id = co.pizza_id
+			union all
+			select 
+				co.order_id ,
+				co.pizza_id,
+				trim(unnest(string_to_array(coalesce(co.exclusions, '0'), ','))) as custom_toppings,
+				-1 as topping_adder
+			from pizza_runner.customer_orders co
+			union all
+			select 
+				co.order_id ,
+				co.pizza_id,
+				trim(unnest(string_to_array(coalesce(co.extras, '0'), ','))) as custom_toppings,	
+				1 as topping_adder
+			from pizza_runner.customer_orders co
+		) tab1
+		left join pizza_runner.pizza_names pn on tab1.pizza_id = pn.pizza_id 
+		left join pizza_runner.pizza_toppings pt on cast(tab1.custom_toppings as numeric) = pt.topping_id 
+		--left join pizza_runner.pizza_toppings pt 
+		--on tab1.custom_toppings = pt.topping_id 
+		where tab1.custom_toppings != '0'
+		group by tab1.order_id, pn.pizza_name, tab1.custom_toppings, pt.topping_name
+		order by tab1.order_id, pn.pizza_name, pt.topping_name
+) tab2
+group by topping_name
+order by occurences_aggr desc, topping_name asc;
+
+-- D. Pricing and Ratings
+-- If a Meat Lovers pizza costs $12 and Vegetarian costs $10 and there were no charges for changes - how much money has Pizza Runner made so far if there are no delivery fees?
+
+select 	
+	sum(tab1.pizza_money) as pizza_runner_total
 from(
 	select 
 		co.order_id,
 		co.pizza_id,
-		unnest(string_to_array(coalesce(pr.toppings , '0'), ',')) as custom_toppings,
-		1 as topping_adder
-	from 
-		pizza_runner.pizza_recipes pr
-	right join
-		pizza_runner.customer_orders co 
-	on pr.pizza_id = co.pizza_id
-	union all
-	select 
-		co.order_id ,
-		co.pizza_id,
-		unnest(string_to_array(coalesce(co.exclusions, '0'), ',')) as custom_toppings,
-		-1 as topping_adder
-	from pizza_runner.customer_orders co
-	union all
-	select 
-		co.order_id ,
-		co.pizza_id,
-		unnest(string_to_array(coalesce(co.extras, '0'), ',')) as custom_toppings,	
-		1 as topping_adder
-	from pizza_runner.customer_orders co
+		pn.pizza_name,
+		case 
+			when pn.pizza_name = 'Meatlovers' then 12
+			else 10
+		end as pizza_money
+	from pizza_runner.customer_orders co 
+	left join pizza_runner.pizza_names pn on co.pizza_id = pn.pizza_id 
 ) tab1
-left join pizza_runner.pizza_names pn 
-on tab1.pizza_id = pn.pizza_id 
---left join pizza_runner.pizza_toppings pt 
---on tab1.custom_toppings = pt.topping_id 
-where tab1.custom_toppings != '0'
-group by tab1.order_id, pn.pizza_name, tab1.custom_toppings 
-;
 
-
--- What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
--- D. Pricing and Ratings
--- If a Meat Lovers pizza costs $12 and Vegetarian costs $10 and there were no charges for changes - how much money has Pizza Runner made so far if there are no delivery fees?
 -- What if there was an additional $1 charge for any pizza extras?
 -- Add cheese is $1 extra
+select 
+	sum(order_total) as total
+from(
+	select 
+		tab_pizza_totals.order_id,
+		tab_pizza_totals.pizza_total + coalesce(tab_extras.extras_tot, 0) as order_total
+	from(
+		select 	
+			tab_pizza.order_id,
+			sum(tab_pizza.pizza_money) as pizza_total
+			--tab_extras.extras_tot
+		from(
+			select 
+				co.order_id,
+				co.pizza_id,
+				pn.pizza_name,
+				case 
+					when pn.pizza_name = 'Meatlovers' then 12
+					else 10
+				end as pizza_money
+			from pizza_runner.customer_orders co 
+			left join pizza_runner.pizza_names pn on co.pizza_id = pn.pizza_id 
+		) tab_pizza
+		group by order_id
+	) tab_pizza_totals
+	left join (
+		select 
+			tab2.order_id,
+			tab2.pizza_name,
+			sum(extras_money) as extras_tot
+		from(
+			select 
+				tab1.order_id,
+				tab1.pizza_name,
+				coalesce(pt.topping_name, '-') as topping_extra,
+				case 
+					when coalesce(pt.topping_name, '-') = '-' then 0
+					when coalesce(pt.topping_name, '-') = 'Cheese' then 2
+					else 1
+				end as extras_money
+			from(
+			select 
+				co.order_id,
+				co.pizza_id,
+				pn.pizza_name,
+				trim(unnest(string_to_array(coalesce(co.extras, '0'), ','))) as custom_extras,	
+				case 
+					when pn.pizza_name = 'Meatlovers' then 12
+					else 10
+				end as pizza_money
+			from pizza_runner.customer_orders co 
+			left join pizza_runner.pizza_names pn on co.pizza_id = pn.pizza_id
+			) tab1
+			left join pizza_runner.pizza_toppings pt on cast(tab1.custom_extras as numeric) = pt.topping_id
+			where tab1.custom_extras != '0'
+		) tab2
+		group by order_id, pizza_name
+	) tab_extras
+	on tab_pizza_totals.order_id = tab_extras.order_id
+) tab_orders;
+
+
 -- The Pizza Runner team now wants to add an additional ratings system that allows customers to rate their runner, how would you design an additional table for this new dataset - generate a schema for this new table and insert your own data for ratings for each successful customer order between 1 to 5.
+
+
 -- Using your newly generated table - can you join all of the information together to form a table which has the following information for successful deliveries?
 -- customer_id
 -- order_id
