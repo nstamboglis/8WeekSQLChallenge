@@ -492,7 +492,37 @@ from(
 
 
 -- The Pizza Runner team now wants to add an additional ratings system that allows customers to rate their runner, how would you design an additional table for this new dataset - generate a schema for this new table and insert your own data for ratings for each successful customer order between 1 to 5.
+DROP TABLE IF EXISTS pizza_runner.ratings;
+CREATE TABLE pizza_runner.ratings (
+  "order_id" INTEGER,
+  "customer_id" INTEGER,
+  "runner_id" INTEGER,
+  "rating" INTEGER
+);
+INSERT INTO pizza_runner.ratings
+  ("order_id", "customer_id", "runner_id", "rating")
+select 
+	distinct customer_orders.order_id,
+	customer_orders.customer_id,
+	ro.runner_id,
+	cast(trunc(random() * 5 + 1) as int) as rating
+from 
+	pizza_runner.customer_orders
+left join 
+	pizza_runner.runner_orders ro 
+	on  customer_orders.order_id = ro.order_id 
+;
 
+select 
+	distinct customer_orders.order_id,
+	customer_orders.customer_id,
+	ro.runner_id,
+	trunc(random() * 5 + 1) as rating
+from 
+	pizza_runner.customer_orders
+left join 
+	pizza_runner.runner_orders ro 
+	on  customer_orders.order_id = ro.order_id ;
 
 -- Using your newly generated table - can you join all of the information together to form a table which has the following information for successful deliveries?
 -- customer_id
@@ -505,7 +535,81 @@ from(
 -- Delivery duration
 -- Average speed
 -- Total number of pizzas
+
+select 
+	rat.order_id,
+	rat.customer_id,
+	rat.runner_id,
+	rat.rating,
+	tab_orders.order_time,
+	cast(tab_speed.pickup_time as timestamp),
+	cast(tab_speed.pickup_time as timestamp)-tab_orders.order_time as delta_order_pickup,
+	tab_speed.deliver_duration,
+	tab_speed.order_speed,
+	tab_orders.n_pizzas
+from 
+	(select 
+		rat_int.order_id,
+		rat_int.customer_id,
+		rat_int.runner_id,
+		rat_int.rating,
+		row_number(*) OVER(PARTITION BY rat_int.order_id) AS order_counter
+	from 
+	pizza_runner.ratings rat_int
+	) rat
+left join(
+	select 
+		count(distinct co.pizza_id) as n_pizzas,
+		co.order_time,
+		co.order_id 
+	from pizza_runner.customer_orders co 
+	group by co.order_id, co.order_time
+) tab_orders
+on rat.order_id = tab_orders.order_id
+right join(
+select 
+	ro.order_id,
+	ro.pickup_time,
+	ro.duration as deliver_duration,
+	round(ro.distance / ro.duration, 2)  as order_speed
+from pizza_runner.runner_orders ro
+where ro.pickup_time is not null
+) tab_speed
+on rat.order_id = tab_speed.order_id
+where rat.order_counter = 1
+order by order_id asc; 
+
 -- If a Meat Lovers pizza was $12 and Vegetarian $10 fixed prices with no cost for extras and each runner is paid $0.30 per kilometre traveled - how much money does Pizza Runner have left over after these deliveries?
+select 
+	sum(pizza_revenue.pizza_net_revenue) as net_revenue
+from(
+	select 
+		pizza_money1.order_id,
+		sum(pizza_money1.pizza_price) as pizza_sales,
+		avg(pizza_money1.order_distance) * 0.3 as runners_pay,
+		sum(pizza_money1.pizza_price)-(avg(pizza_money1.order_distance) * 0.3) pizza_net_revenue
+	from(
+	select
+		co.order_id,
+		pn.pizza_name,
+		case 
+			when pn.pizza_name = 'Meatlovers' then 12
+			else 10
+		end as pizza_price,
+		ro2.distance as order_distance 
+	from
+		pizza_runner.customer_orders co
+	left join
+		pizza_runner.pizza_names pn 
+	on co.pizza_id = pn.pizza_id 
+	left join 
+		pizza_runner.runner_orders ro2 
+	on co.order_id = ro2.order_id 
+	where ro2.cancellation is null
+	) pizza_money1
+	group by pizza_money1.order_id
+) as pizza_revenue;
+
 -- E. Bonus Questions
 -- If Danny wants to expand his range of pizzas - how would this impact the existing data design? Write an INSERT statement to demonstrate what would happen if a new Supreme pizza with all the toppings was added to the Pizza Runner menu?
 
