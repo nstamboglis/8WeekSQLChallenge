@@ -612,7 +612,20 @@ from(
 
 -- E. Bonus Questions
 -- If Danny wants to expand his range of pizzas - how would this impact the existing data design? Write an INSERT statement to demonstrate what would happen if a new Supreme pizza with all the toppings was added to the Pizza Runner menu?
+INSERT INTO pizza_runner.pizza_names values
+(3, 'Supreme');
 
+INSERT INTO pizza_runner.pizza_recipes 
+("pizza_id", "toppings")
+select 	
+	3 as pizza_id,
+	string_agg(tab1.topping_id, ',') as toppings
+from(
+	select cast(pt.topping_id as varchar)
+	from pizza_runner.pizza_toppings pt
+	group by pt.topping_id
+	order by pt.topping_id asc
+) tab1;
 
 -- NOTES
 -- 1. I like the realism of the questions. There was some amibguity (duplicated rows? Meaning of some questions). This ambiguity is what you get in real life.
