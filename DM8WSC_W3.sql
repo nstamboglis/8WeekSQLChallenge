@@ -47,10 +47,76 @@ group by tab1.onboarding_journey;
 
 -- B. Data Analysis Questions
 -- How many customers has Foodie-Fi ever had?
+select
+	count (distinct s.customer_id) 
+from foodie_fi.subscriptions s
+where s.plan_id != 0 and s.plan_id != 4; 
+-- I interpret as customer only those who switched to a pay option
+
 -- What is the monthly distribution of trial plan start_date values for our dataset - use the start of the month as the group by value
+select 
+	cast(date_trunc('month', s.start_date) as date) as subscription_date,
+	extract(day from s.start_date) as trial_day,
+	count(extract(day from s.start_date))
+from 
+	foodie_fi.subscriptions s 
+where 
+	s.plan_id = 0
+group by extract(day from s.start_date), cast(date_trunc('month', s.start_date) as date)
+order by cast(date_trunc('month', s.start_date) as date), extract(day from s.start_date) asc;
+
 -- What plan start_date values occur after the year 2020 for our dataset? Show the breakdown by count of events for each plan_name
+select 
+	s.start_date,
+	p.plan_name,
+	count(s.customer_id)
+from 
+	foodie_fi.subscriptions s 
+left join 
+	foodie_fi."plans" p 
+on s.plan_id = p.plan_id 
+where 
+	extract(year from s.start_date) > 2020
+group by 
+	p.plan_name,
+	s.start_date
+order by 
+	s.start_date asc,
+	p.plan_name asc; 
+
 -- What is the customer count and percentage of customers who have churned rounded to 1 decimal place?
+select 
+	count(distinct s.customer_id) as n_customers,
+	(select count(distinct s2.customer_id) from foodie_fi.subscriptions s2 where s2.plan_id = 4) as n_churners,
+	round((select count(distinct s2.customer_id) from foodie_fi.subscriptions s2 where s2.plan_id = 4) / count(distinct s.customer_id)::numeric,3) * 100 as perc_churners
+from 
+	foodie_fi.subscriptions s;
+
 -- How many customers have churned straight after their initial free trial - what percentage is this rounded to the nearest whole number?
+select 
+	(select count(distinct s2.customer_id) from foodie_fi.subscriptions s2) as n_customers,
+ 	count(distinct tab2.customer_id) as n_straight_churners,
+ 	round(count(distinct tab2.customer_id) / (select count(distinct s2.customer_id) from foodie_fi.subscriptions s2)::numeric, 1) * 100 as perc_straight_churners
+from(
+	select 
+		tab1.customer_id,
+		string_agg(cast(tab1.plan_id as character), ',') as sub_history
+	from(
+		select 
+			s.customer_id,
+			s.plan_id 
+		from 
+			foodie_fi.subscriptions s 
+		group by
+			s.customer_id, s.plan_id
+		order by 
+			s.customer_id asc, s.plan_id asc
+	) tab1
+	group by tab1.customer_id
+) tab2
+where 
+	tab2.sub_history = '0,4'; 
+	
 -- What is the number and percentage of customer plans after their initial free trial?
 -- What is the customer count and percentage breakdown of all 5 plan_name values at 2020-12-31?
 -- How many customers have upgraded to an annual plan in 2020?
