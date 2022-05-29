@@ -118,7 +118,55 @@ where
 	tab2.sub_history = '0,4'; 
 	
 -- What is the number and percentage of customer plans after their initial free trial?
+select 
+	s.plan_id,
+	count(s.customer_id) as n_customers,
+	round(count(s.customer_id) / (select count(s2.customer_id) from foodie_fi.subscriptions s2 where s2.plan_id not in (0,4))::numeric, 3) * 100 as perc_customers
+from foodie_fi.subscriptions s 
+where s.plan_id not in (0, 4)
+group by s.plan_id
+order by s.plan_id asc;
+
 -- What is the customer count and percentage breakdown of all 5 plan_name values at 2020-12-31?
+select
+	p3.plan_name,
+	tab3.n_customers_at_date
+from(
+	select 
+		count(tab2.customer_id) n_customers_at_date,
+		tab2.plan_id
+	from(
+		select 
+			tab1.customer_id,
+			tab1.my_date,
+			s2.plan_id
+		from(
+			select 
+				s.customer_id,
+				max(s.start_date) as my_date
+			from 
+				foodie_fi.subscriptions s 
+			left join 
+				foodie_fi."plans" p 
+			on s.plan_id = p.plan_id 
+			where 
+				s.start_date <= '2020-12-31'
+			group by s.customer_id
+			order by s.customer_id
+		) tab1
+		inner join 
+			foodie_fi.subscriptions s2 
+		on tab1.customer_id = s2.customer_id and tab1.my_date = s2.start_date
+	) tab2
+	group by 
+		tab2.plan_id
+	order by 	
+		tab2.plan_id asc
+) tab3
+inner join 
+	foodie_fi."plans" p3 
+on tab3.plan_id = p3.plan_id; 
+
 -- How many customers have upgraded to an annual plan in 2020?
 -- How many days on average does it take for a customer to an annual plan from the day they join Foodie-Fi?
 -- Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
