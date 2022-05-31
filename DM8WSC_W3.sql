@@ -168,7 +168,53 @@ inner join
 on tab3.plan_id = p3.plan_id; 
 
 -- How many customers have upgraded to an annual plan in 2020?
+select 
+	count( tab2.customer_id)
+from(
+	select 
+		tab1.customer_id,
+		tab1.plan_id,
+		tab1.start_date,
+		max(tab1.customer_obs) last_plan_index
+	from(
+		select 
+			*,
+			row_number() over (partition by s.customer_id) as customer_obs
+		from foodie_fi.subscriptions s
+		where s.start_date <= '2020/12/31'
+	) tab1
+	group by tab1.customer_id, tab1.plan_id, tab1.start_date
+) tab2
+where tab2.plan_id = 3;
+
 -- How many days on average does it take for a customer to an annual plan from the day they join Foodie-Fi?
+select 
+	*
+from(
+	select 
+		tab1.customer_id,
+		tab1.plan_id,
+		tab1.start_date as date_subscription,
+		max(tab1.customer_obs) last_plan_index
+	from(
+		select 
+			*,
+			row_number() over (partition by s.customer_id) as customer_obs
+		from foodie_fi.subscriptions s
+		where s.start_date <= '2020/12/31'
+	) tab1
+	group by tab1.customer_id, tab1.plan_id, tab1.start_date
+) tab2
+left join (
+	select 
+		s2.customer_id,
+		s2.start_date as date_join
+		from foodie_fi.subscriptions s2
+		where s2.start_date <= '2020/12/31' and s2.plan_id = 0
+) tab3
+on tab2.customer_id = tab3_customer_id
+where tab2.plan_id = 3;
+
 -- Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
 -- How many customers downgraded from a pro monthly to a basic monthly plan in 2020?
 
