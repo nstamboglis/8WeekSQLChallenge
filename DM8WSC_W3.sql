@@ -188,35 +188,75 @@ from(
 where tab2.plan_id = 3;
 
 -- How many days on average does it take for a customer to an annual plan from the day they join Foodie-Fi?
-select 
-	*
+select
+	round(avg(n_days),2) as average_days
 from(
 	select 
-		tab1.customer_id,
-		tab1.plan_id,
-		tab1.start_date as date_subscription,
-		max(tab1.customer_obs) last_plan_index
-	from(
-		select 
+		s.customer_id,
+		s.start_date as annual_plan_date,
+		s3.start_date as trial_date,
+		s.start_date - s3.start_date as n_days
+	from foodie_fi.subscriptions s
+	left join(
+		select
 			*,
-			row_number() over (partition by s.customer_id) as customer_obs
-		from foodie_fi.subscriptions s
-		where s.start_date <= '2020/12/31'
-	) tab1
-	group by tab1.customer_id, tab1.plan_id, tab1.start_date
-) tab2
-left join (
-	select 
-		s2.customer_id,
-		s2.start_date as date_join
+			row_number() over (partition by s2.customer_id) as customer_obs
 		from foodie_fi.subscriptions s2
-		where s2.start_date <= '2020/12/31' and s2.plan_id = 0
-) tab3
-on tab2.customer_id = tab3_customer_id
-where tab2.plan_id = 3;
+		where s2.plan_id = 0
+	) s3
+	on s.customer_id = s3.customer_id 
+	where s.start_date <= '2020/12/31' and s.plan_id in (3)
+) s4;
 
 -- Can you further breakdown this average value into 30 day periods (i.e. 0-30 days, 31-60 days etc)
+select
+	round(avg(n_days),2) as average_days,
+	days_bins
+from(
+	select 
+		s.customer_id,
+		s.start_date as annual_plan_date,
+		s3.start_date as trial_date,
+		(s.start_date - s3.start_date) as n_days,
+		(((s.start_date - s3.start_date) / 30) +1) *30 as days_bins
+	from foodie_fi.subscriptions s
+	left join(
+		select
+			*,
+			row_number() over (partition by s2.customer_id) as customer_obs
+		from foodie_fi.subscriptions s2
+		where s2.plan_id = 0
+	) s3
+	on s.customer_id = s3.customer_id 
+	where s.start_date <= '2020/12/31' and s.plan_id in (3)
+) s4
+group by days_bins
+order by days_bins asc;
+
 -- How many customers downgraded from a pro monthly to a basic monthly plan in 2020?
+select 
+	count(distinct s4.customer_id)
+from(
+	select 
+		s.customer_id,
+		s.plan_id,
+		s.start_date as basic_sub_date,
+		s3.plan_id,
+		s3.start_date as pro_annual_sub_date,
+		(s.start_date - s3.start_date) as basic_to_pro_days
+	from foodie_fi.subscriptions s
+	left join (
+		select 
+			s2.customer_id,
+			s2.plan_id,
+			s2.start_date 
+		from foodie_fi.subscriptions s2
+		where s2.plan_id in (3)
+	) s3
+	on s.customer_id = s3.customer_id
+	where s.plan_id in (1) and s3.plan_id = 3
+) s4
+where s4.basic_to_pro_days > 0;
 
 -- C. Challenge Payment Question
 -- The Foodie-Fi team wants you to create a new payments table for the year 2020 that includes amounts paid by each customer in the subscriptions table with the following requirements:
