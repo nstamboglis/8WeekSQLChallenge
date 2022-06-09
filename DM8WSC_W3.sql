@@ -276,8 +276,12 @@ where s4.basic_to_pro_days > 0;
 -- 2	3	pro annual	2020-09-27	199.00	1
 
 select 
-	*,
-	n AS test_date
+	tab3.customer_id,
+	tab3.plan_id,
+	tab3.plan_name,
+	cast(to_char(tab3.start_date  + interval '1 month' * n, 'YYYY-MM-DD') as date) AS payment_date,
+	tab3.price as amount,
+	row_number() over(partition by tab3.customer_id) as payment_ord
 from(
 	select
 	tab2.customer_id,
