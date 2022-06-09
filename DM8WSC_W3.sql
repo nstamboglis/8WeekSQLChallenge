@@ -275,6 +275,57 @@ where s4.basic_to_pro_days > 0;
 -- 1	1	basic monthly	2020-12-08	9.90	5
 -- 2	3	pro annual	2020-09-27	199.00	1
 
+select 
+	*,
+	n AS test_date
+from(
+	select
+	tab2.customer_id,
+	tab2.plan_id,
+	tab2.plan_name,
+	tab2.start_date,
+	tab2.end_date,
+	EXTRACT(year FROM age(tab2.end_date, tab2.start_date))*12 + extract(month from age(tab2.end_date, tab2.start_date)) as months_to_end,
+	tab2.price
+	from(
+		select
+			tab1.customer_id,
+			tab1.plan_id,
+			tab1.plan_name,
+			tab1.start_date,
+			tab1.price,
+			LEAD (tab1.start_date, 1) OVER (partition by tab1.customer_id) as next_date,
+			case 
+				when LEAD (tab1.start_date, 1) OVER (partition by tab1.customer_id) is null then case 
+					when tab1.plan_id = 4 then tab1.start_date
+					else current_date
+				end
+				else LEAD (tab1.start_date, 1) OVER (partition by tab1.customer_id)
+			end as end_date
+		from(
+			select
+				s.customer_id,
+				s.plan_id,
+				p.plan_name,
+				s.start_date,
+				p.price
+			from foodie_fi.subscriptions s 
+			left join
+			foodie_fi."plans" p 
+			on s.plan_id = p.plan_id
+			where s.plan_id != 0
+			order by s.customer_id asc, s.start_date asc
+		) tab1
+	) tab2
+	where tab2.plan_id != 4
+) tab3,
+generate_series(0, tab3.months_to_end - 1) AS x(n);
+
+
+
+
+EXTRACT(year FROM age(current_date,s.start_date))*12 + extract(month from age(current_date, s.start_date)) as months_to_today,
+
 -- D. Outside The Box Questions
 -- The following are open ended questions which might be asked during a technical interview for this case study - there are no right or wrong answers, but answers that make sense from both a technical and a business perspective make an amazing impression!
 
