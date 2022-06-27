@@ -329,6 +329,72 @@ generate_series(0, tab3.months_to_end - 1) AS x(n);
 -- The following are open ended questions which might be asked during a technical interview for this case study - there are no right or wrong answers, but answers that make sense from both a technical and a business perspective make an amazing impression!
 
 -- How would you calculate the rate of growth for Foodie-Fi?
+-- One simple option is to compute the monthly rate of growth in revenue
+select 
+	tab_sales1.my_date,
+	tab_sales1.revenue as current_revenue,
+	lag(tab_sales1.revenue, 1) over(order by tab_sales1.my_date) as prev_month_sale,
+	round(100*(tab_sales1.revenue - lag(tab_sales1.revenue, 1) over(order by tab_sales1.my_date)) / (lag(tab_sales1.revenue, 1) over(order by tab_sales1.my_date)),2)  as revenue_month_variation,
+	round(100 * (tab_sales1.revenue - first_value(tab_sales1.revenue) over(order by tab_sales1.my_date)) / (first_value(tab_sales1.revenue) over (order by tab_sales1.my_date)), 2) as revenue_index_variation
+from(
+	select 
+		to_char(tab4.payment_date, 'YYYY-MM') my_date,
+		sum(tab4.amount) as revenue
+	from(
+		select 
+			tab3.customer_id,
+			tab3.plan_id,
+			tab3.plan_name,
+			cast(to_char(tab3.start_date  + interval '1 month' * n, 'YYYY-MM-DD') as date) AS payment_date,
+			tab3.price as amount,
+			row_number() over(partition by tab3.customer_id) as payment_ord
+		from(
+			select
+			tab2.customer_id,
+			tab2.plan_id,
+			tab2.plan_name,
+			tab2.start_date,
+			tab2.end_date,
+			EXTRACT(year FROM age(tab2.end_date, tab2.start_date))*12 + extract(month from age(tab2.end_date, tab2.start_date)) as months_to_end,
+			tab2.price
+			from(
+				select
+					tab1.customer_id,
+					tab1.plan_id,
+					tab1.plan_name,
+					tab1.start_date,
+					tab1.price,
+					LEAD (tab1.start_date, 1) OVER (partition by tab1.customer_id) as next_date,
+					case 
+						when LEAD (tab1.start_date, 1) OVER (partition by tab1.customer_id) is null then case 
+							when tab1.plan_id = 4 then tab1.start_date
+							else current_date
+						end
+						else LEAD (tab1.start_date, 1) OVER (partition by tab1.customer_id)
+					end as end_date
+				from(
+					select
+						s.customer_id,
+						s.plan_id,
+						p.plan_name,
+						s.start_date,
+						p.price
+					from foodie_fi.subscriptions s 
+					left join
+					foodie_fi."plans" p 
+					on s.plan_id = p.plan_id
+					where s.plan_id != 0
+					order by s.customer_id asc, s.start_date asc
+				) tab1
+			) tab2
+			where tab2.plan_id != 4
+		) tab3,
+		generate_series(0, tab3.months_to_end - 1) AS x(n)
+	) tab4
+	group by my_date
+	order by my_date asc
+) tab_sales1;
+
 -- What key metrics would you recommend Foodie-Fi management to track over time to assess performance of their overall business?
 -- What are some key customer journeys or experiences that you would analyse further to improve customer retention?
 -- If the Foodie-Fi team were to create an exit survey shown to customers who wish to cancel their subscription, what questions would you include in the survey?
