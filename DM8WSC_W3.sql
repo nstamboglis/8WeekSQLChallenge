@@ -396,6 +396,26 @@ from(
 ) tab_sales1;
 
 -- What key metrics would you recommend Foodie-Fi management to track over time to assess performance of their overall business?
+-- I'de reccommend the following metrics: 
+--  	a) number of new customers over total customers, 
+--		b) number of returning customers over new customers, 
+--		c) retention rate of customers, 
+--		d) total revenues, 
+--		e) revenues growth rate
+
 -- What are some key customer journeys or experiences that you would analyse further to improve customer retention?
+-- I'd analyse a bit more:
+-- 		a) length of subscription plan (associated with plan improvement?),
+--		b) average churn time and seasonality.
+
 -- If the Foodie-Fi team were to create an exit survey shown to customers who wish to cancel their subscription, what questions would you include in the survey?
+-- a) why did you decide to cancel your subscription?
+-- b) what did not satisfied you with this service?
+-- c) what did satisfy you with the service?
+-- d) what would make you stay?
+-- e) any other suggestion for us?
+
 -- What business levers could the Foodie-Fi team use to reduce the customer churn rate? How would you validate the effectiveness of your ideas?
+-- a) price
+-- b) limited time service discount
+-- Metrics: demand elasticity, A/B testing
