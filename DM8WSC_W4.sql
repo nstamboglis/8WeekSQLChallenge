@@ -68,25 +68,51 @@ group by cn.start_date,  r.region_name
 order by cn.start_date asc, r.region_name asc;
 
 -- How many days on average are customers reallocated to a different node?
-
+-- Achtung: I interpret the phrase "to a different node" as being allocated to a not not equal to the current one (ex: if user x is in node y and then gets reallocated to node y, then we have allocation continuity)
+-- I also remove the date equal to '9999-12-31'
 select 
-	cn.customer_id,
-	cn.node_id,
-	cn.end_date - cn.start_date as n_days,
-	cn.start_date 
-from data_bank.customer_nodes cn
-order by start_date;
-
-
-select 
---	cn.customer_id,
-	cn.node_id,
-	round(avg(cn.end_date - cn.start_date), 2) as n_days
-from 
-	data_bank.customer_nodes cn
-group by cn.node_id;
+	round(avg(tab2.avg_alloc_days), 1) as avg_reall_days
+from(
+	select 
+		cn.customer_id,
+		cn.node_id,
+		cn.end_date - cn.start_date as n_days,
+		cn.start_date,
+		cn.end_date,
+		sum(cn.end_date - cn.start_date) over(partition by cn.customer_id, cn.node_id) as avg_alloc_days,
+		lag(cn.node_id, 1) over(partition by cn.customer_id, cn.node_id) as node_id_next,
+		lag(cn.end_date, 1) over(partition by cn.customer_id, cn.node_id) as end_date_next
+	from data_bank.customer_nodes cn
+	where cn.end_date != '9999-12-31'
+) tab2
+where tab2.node_id_next is NULL;
+--order by cn.customer_id asc, cn.start_date asc;
 
 -- What is the median, 80th and 95th percentile for this same reallocation days metric for each region?
+select 
+	tab3.alloc_percentile,
+	round(avg(tab3.avg_alloc_days),1) as percentile_value
+from(
+	select 
+		*,
+		ntile(100) over(order by tab2.avg_alloc_days) as alloc_percentile	
+	from(
+		select 
+			cn.customer_id,
+			cn.node_id,
+			cn.end_date - cn.start_date as n_days,
+			cn.start_date,
+			cn.end_date,
+			sum(cn.end_date - cn.start_date) over(partition by cn.customer_id, cn.node_id) as avg_alloc_days,
+			lag(cn.node_id, 1) over(partition by cn.customer_id, cn.node_id) as node_id_next,
+			lag(cn.end_date, 1) over(partition by cn.customer_id, cn.node_id) as end_date_next
+		from data_bank.customer_nodes cn
+		where cn.end_date != '9999-12-31'
+	) tab2
+	where tab2.node_id_next is null
+) tab3
+where tab3.alloc_percentile in (50, 85, 90)
+group by tab3.alloc_percentile;
 
 -- B. Customer Transactions
 -- What is the unique count and total amount for each transaction type?
