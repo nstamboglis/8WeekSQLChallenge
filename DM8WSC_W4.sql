@@ -28,19 +28,28 @@ left join
 	data_bank.regions r 
 on cn.region_id = r.region_id 
 group by cn.node_id 
-order by cn.node_id  asc;
+order by cn.node_id asc;
 
 -- Recompute the point above by date
 select 
-	cn.start_date,
-	r.region_name,	
-	count(distinct cn.node_id) as n_nodes 
-from data_bank.customer_nodes cn 
-left join
-	data_bank.regions r 
-on cn.region_id = r.region_id 
-group by cn.start_date,  r.region_name
-order by cn.start_date asc, r.region_name asc;
+	start_end,
+	node_id,
+	count(distinct region_name) as n_regions
+from (
+	select cn2.node_id, r.region_name, test_table.dt::date as start_end
+	from 
+		(select 
+		*,
+		case 
+			when  extract(year from cn.end_date) = '9999' then '2022-12-09'
+			else cn.end_date 
+		end as end_date_transf
+		from data_bank.customer_nodes cn) cn2
+	cross join  generate_series(cn2.start_date, cn2.end_date_transf, interval '1 day') as test_table(dt)
+	left join data_bank.regions r on cn2.region_id = r.region_id 
+	order by cn2.node_id, start_end) tquery
+group by node_id, start_end
+order by node_id, start_end;
 
 -- How many customers are allocated to each region?
 
@@ -116,7 +125,28 @@ group by tab3.alloc_percentile;
 
 -- B. Customer Transactions
 -- What is the unique count and total amount for each transaction type?
+select 
+	ct.txn_type,
+	count(*) as n_transactions,
+	sum(ct.txn_amount) as tot_amount
+from data_bank.customer_transactions ct
+group by ct.txn_type
+order by ct.txn_type asc;
+
 -- What is the average total historical deposit counts and amounts for all customers?
+select 
+	round(avg(tab2.n_transactions),1) as n_transactions_avg,
+	round(avg(tab2.tot_amount),1) as amount_avg
+from(
+	select 
+		ct.customer_id,
+		count(*) as n_transactions,
+		sum(ct.txn_amount) as tot_amount
+	from data_bank.customer_transactions ct
+	group by ct.customer_id 
+	order by ct.customer_id asc
+) tab2;
+
 -- For each month - how many Data Bank customers make more than 1 deposit and either 1 purchase or 1 withdrawal in a single month?
 -- What is the closing balance for each customer at the end of the month?
 -- What is the percentage of customers who increase their closing balance by more than 5%?
