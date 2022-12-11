@@ -94,9 +94,9 @@ from(
 		cn.end_date - cn.start_date as n_days,
 		cn.start_date,
 		cn.end_date,
-		sum(cn.end_date - cn.start_date) over(partition by cn.customer_id, cn.node_id) as avg_alloc_days,
-		lead(cn.node_id, 1) over(partition by cn.customer_id, cn.node_id) as node_id_next,
-		lead(cn.end_date, 1) over(partition by cn.customer_id, cn.node_id) as end_date_next
+		sum(cn.end_date - cn.start_date) over(partition by cn.customer_id, cn.node_id, cn.region_id) as avg_alloc_days,
+		lead(cn.node_id, 1) over(partition by cn.customer_id, cn.node_id, cn.region_id) as node_id_next,
+		lead(cn.end_date, 1) over(partition by cn.customer_id, cn.node_id, cn.region_id) as end_date_next
 	from data_bank.customer_nodes cn
 	where cn.end_date != '9999-12-31') tab2
 where tab2.node_id_next is NULL;
@@ -118,9 +118,9 @@ from(
 			cn.start_date,
 			cn.end_date,
 			r.region_name,
-			sum(cn.end_date - cn.start_date) over(partition by cn.customer_id, cn.node_id) as avg_alloc_days,
-			lead(cn.node_id, 1) over(partition by cn.customer_id, cn.node_id) as node_id_next,
-			lead(cn.end_date, 1) over(partition by cn.customer_id, cn.node_id) as end_date_next
+			sum(cn.end_date - cn.start_date) over(partition by cn.customer_id, cn.node_id, cn.region_id) as avg_alloc_days,
+			lead(cn.node_id, 1) over(partition by cn.customer_id, cn.node_id, cn.region_id) as node_id_next,
+			lead(cn.end_date, 1) over(partition by cn.customer_id, cn.node_id, cn.region_id) as end_date_next
 		from data_bank.customer_nodes cn
 		left join data_bank.regions r on cn.region_id = r.region_id
 		where cn.end_date != '9999-12-31'
@@ -156,7 +156,70 @@ from(
 ) tab2;
 
 -- For each month - how many Data Bank customers make more than 1 deposit and either 1 purchase or 1 withdrawal in a single month?
+
+select 
+	txn_ym,
+	count(customer_id) as n_customers
+from(
+	select 
+		tab2.customer_id,
+		tab2.txn_ym,
+		sum(txn_deposit) as n_deposits,
+		sum(txn_purchase) as n_purchase,
+		sum(txn_withdrawal) as n_withdrawal
+	from(
+		select 
+			ct.customer_id,
+			to_char(txn_date, 'YYYY_MM') as txn_ym, 
+			ct.txn_type,
+			case 
+				when txn_type = 'deposit' then 1
+				else 0
+			end as txn_deposit,
+			case 
+				when txn_type = 'purchase' then 1
+				else 0
+			end as txn_purchase,
+			case 
+				when txn_type = 'withdrawal' then 1
+				else 0
+			end as txn_withdrawal
+		from data_bank.customer_transactions ct) tab2
+	group by customer_id, txn_ym
+	order by customer_id asc, txn_ym asc) tab3
+where n_deposits >1 and (n_purchase >0 or n_withdrawal >0)
+group by txn_ym
+order by txn_ym asc;
+
+-- CONTINUA FROM HERE: a) add missing months, b) compute balance considering previos month as starting point
+
 -- What is the closing balance for each customer at the end of the month?
+select 
+	tab3.customer_id,
+	tab3.txn_ym,
+	tab3.balance_delta,
+	lag(tab3.balance_delta,1) over(partition by tab3.customer_id, tab3.txn_ym) as balance_var_prev
+from(
+	select 
+		tab2.customer_id,
+		tab2.txn_ym,
+		sum(tab2.balance_input) as balance_delta
+	from(
+		select 
+			ct.customer_id,
+			to_char(txn_date, 'YYYY_MM') as txn_ym, 
+			ct.txn_type,
+			case 
+				when txn_type = 'deposit' then txn_amount 
+				when txn_type = 'purchase' then -txn_amount 
+				when txn_type = 'withdrawal' then -txn_amount 
+				else 0
+			end as balance_input
+		from data_bank.customer_transactions ct) tab2
+	group by tab2.customer_id, tab2.txn_ym
+	order by tab2.txn_ym asc, tab2.customer_id asc ) tab3;
+
+
 -- What is the percentage of customers who increase their closing balance by more than 5%?
 
 -- C. Data Allocation Challenge
