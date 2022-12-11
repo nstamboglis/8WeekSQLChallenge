@@ -52,29 +52,35 @@ group by node_id, start_end
 order by node_id, start_end;
 
 -- How many customers are allocated to each region?
+select 
+	count(distinct cn.customer_id) as n_customers_unique,
+	re.region_name
+from data_bank.customer_nodes cn 
+left join data_bank.regions re on cn.region_id = re.region_id
+group by re.region_name;
 
 -- Check over all dates 
-select 
-	r.region_name,	
-	count(distinct cn.customer_id) as n_customers 
-from data_bank.customer_nodes cn 
-left join
-	data_bank.regions r 
-on cn.region_id = r.region_id 
-group by r.region_name
-order by r.region_name asc;
 
--- Check for individual start date
 select 
-	cn.start_date,
-	r.region_name,	
-	count(distinct cn.customer_id) as n_customers 
-from data_bank.customer_nodes cn 
-left join
-	data_bank.regions r 
-on cn.region_id = r.region_id 
-group by cn.start_date,  r.region_name
-order by cn.start_date asc, r.region_name asc;
+	start_end as bank_date,
+	r.region_name,
+	n_customers
+from(
+	select 
+		count(distinct cn2.node_id) as n_customers, 
+		cn2.region_id, 
+		test_table.dt::date as start_end
+	from 
+		(select 
+		*,
+		case 
+			when  extract(year from cn.end_date) = '9999' then '2022-12-09'
+			else cn.end_date 
+		end as end_date_transf
+		from data_bank.customer_nodes cn) cn2
+	cross join  generate_series(cn2.start_date, cn2.end_date_transf, interval '1 day') as test_table(dt)
+	group by cn2.region_id, start_end) fquery
+left join data_bank.regions r on fquery.region_id = r.region_id;
 
 -- How many days on average are customers reallocated to a different node?
 -- Achtung: I interpret the phrase "to a different node" as being allocated to a not not equal to the current one (ex: if user x is in node y and then gets reallocated to node y, then we have allocation continuity)
