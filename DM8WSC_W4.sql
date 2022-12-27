@@ -191,35 +191,53 @@ where n_deposits >1 and (n_purchase >0 or n_withdrawal >0)
 group by txn_ym
 order by txn_ym asc;
 
--- CONTINUA FROM HERE: a) add missing months, b) compute balance considering previos month as starting point
+-- CONTINUE FROM HERE: a) add missing months (put the pieces together below) - Perhaps it is better to write a table and then recall it
 
 -- What is the closing balance for each customer at the end of the month?
-select 
-	tab3.customer_id,
-	tab3.txn_ym,
-	tab3.balance_delta,
-	lag(tab3.balance_delta,1) over(partition by tab3.customer_id, tab3.txn_ym) as balance_var_prev
-from(
+
+SELECT
+    date_trunc('day', cal)::date AS date,
+    t1.type,
+    t2.value
+FROM generate_series
+    ( '2020-01-01'::timestamp 
+    , '2020-12-31'::timestamp
+    , '1 day'::interval) cal
+CROSS JOIN (SELECT DISTINCT user_id FROM yourTable) t1
+LEFT JOIN yourTable t2
+    ON t2.date = cal.date AND t2.type = t1.type
+ORDER BY
+    t1.type,
+    cal.date;
+
+   select to_char(generate_series(min(ct.txn_date), max(ct.txn_date), '1month')::date, 'YYYY_MM') AS order_date FROM data_bank.customer_transactions ct	
+
+   
 	select 
-		tab2.customer_id,
-		tab2.txn_ym,
-		sum(tab2.balance_input) as balance_delta
+		tab3.customer_id as user_id,
+		tab3.txn_ym as as_of_date,
+--		tab3.balance_delta,
+		tab3.balance_delta + lag(tab3.balance_delta, 1, 0) over(order by tab3.customer_id, tab3.txn_ym) as balance
 	from(
 		select 
-			ct.customer_id,
-			to_char(txn_date, 'YYYY_MM') as txn_ym, 
-			ct.txn_type,
-			case 
-				when txn_type = 'deposit' then txn_amount 
-				when txn_type = 'purchase' then -txn_amount 
-				when txn_type = 'withdrawal' then -txn_amount 
-				else 0
-			end as balance_input
-		from data_bank.customer_transactions ct) tab2
-	group by tab2.customer_id, tab2.txn_ym
-	order by tab2.txn_ym asc, tab2.customer_id asc ) tab3;
-
-
+			tab2.customer_id,
+			tab2.txn_ym,
+			sum(tab2.balance_input) as balance_delta
+		from(
+			select 
+				ct.customer_id,
+				to_char(txn_date, 'YYYY_MM') as txn_ym, 
+				ct.txn_type,
+				case 
+					when txn_type = 'deposit' then txn_amount 
+					when txn_type = 'purchase' then -txn_amount 
+					when txn_type = 'withdrawal' then -txn_amount 
+					else 0
+				end as balance_input
+			from data_bank.customer_transactions ct) tab2
+		group by tab2.customer_id, tab2.txn_ym
+		order by tab2.customer_id asc, tab2.txn_ym asc) tab3;		
+	
 -- What is the percentage of customers who increase their closing balance by more than 5%?
 
 -- C. Data Allocation Challenge
