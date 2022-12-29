@@ -191,99 +191,140 @@ where n_deposits >1 and (n_purchase >0 or n_withdrawal >0)
 group by txn_ym
 order by txn_ym asc;
 
--- CONTINUE FROM HERE: a) add missing months (put the pieces together below) - Perhaps it is better to write a table and then recall it
-
 -- What is the closing balance for each customer at the end of the month?
 
-SELECT
-    date_trunc('day', cal)::date AS date,
-    t1.type,
-    t2.value
-FROM generate_series
-    ( '2020-01-01'::timestamp 
-    , '2020-12-31'::timestamp
-    , '1 day'::interval) cal
-CROSS JOIN (SELECT DISTINCT user_id FROM yourTable) t1
-LEFT JOIN yourTable t2
-    ON t2.date = cal.date AND t2.type = t1.type
-ORDER BY
-    t1.type,
-    cal.date;
-
-   
- select 
- 	tab_final.calendar_date,
- 	tab_final.customer_id,
- 	case 
- 		when tab_final.balance is not null then tab_final.balance
- 		else lag(tab_final.balance, 1, 0) over(order by tab_final.customer_id, tab_final.calendar_date)
- 	end as balance_complete
- from(  
- select 
- 	calendar_table.calendar_date,
- 	t1.customer_id,
- 	balance_table.balance
- FROM(
+with balance_raw as (
 	select 
-		to_char(generate_series(min(ct.txn_date), max(ct.txn_date), '1month')::date, 'YYYY_MM') AS calendar_date 
-		FROM data_bank.customer_transactions ct) calendar_table
-CROSS JOIN (SELECT DISTINCT ct2.customer_id FROM data_bank.customer_transactions ct2) t1
-left join (
-	select 
-		tab3.customer_id as customer_id,
-		tab3.txn_ym as calendar_date,
---		tab3.balance_delta,
-		tab3.balance_delta + lag(tab3.balance_delta, 1, 0) over(order by tab3.customer_id, tab3.txn_ym) as balance
-	from(
+	 	tab_final.calendar_date,
+	 	tab_final.customer_id,
+	 	tab_final.balance,
+	 	count(tab_final.balance) over (order by tab_final.customer_id, tab_final.calendar_date) as _grp
+	 from(  
+	 select 
+	 	calendar_table.calendar_date,
+	 	t1.customer_id,
+	 	balance_table.balance
+	 FROM(
 		select 
-			tab2.customer_id,
-			tab2.txn_ym,
-			sum(tab2.balance_input) as balance_delta
+			to_char(generate_series(min(ct.txn_date), max(ct.txn_date), '1month')::date, 'YYYY_MM') AS calendar_date 
+			FROM data_bank.customer_transactions ct) calendar_table
+	CROSS JOIN (SELECT DISTINCT ct2.customer_id FROM data_bank.customer_transactions ct2) t1
+	left join (
+		select 
+			tab3.customer_id as customer_id,
+			tab3.txn_ym as calendar_date,
+	--		tab3.balance_delta,
+			tab3.balance_delta + lag(tab3.balance_delta, 1, 0) over(order by tab3.customer_id, tab3.txn_ym) as balance
 		from(
 			select 
-				ct.customer_id,
-				to_char(txn_date, 'YYYY_MM') as txn_ym, 
-				ct.txn_type,
-				case 
-					when txn_type = 'deposit' then txn_amount 
-					when txn_type = 'purchase' then -txn_amount 
-					when txn_type = 'withdrawal' then -txn_amount 
-					else 0
-				end as balance_input
-			from data_bank.customer_transactions ct) tab2
-		group by tab2.customer_id, tab2.txn_ym
-		order by tab2.customer_id asc, tab2.txn_ym asc) tab3) balance_table
-on balance_table.calendar_date = calendar_table.calendar_date and balance_table.customer_id = t1.customer_id
-order by customer_id, calendar_date) tab_final; 
- 
+				tab2.customer_id,
+				tab2.txn_ym,
+				sum(tab2.balance_input) as balance_delta
+			from(
+				select 
+					ct.customer_id,
+					to_char(txn_date, 'YYYY_MM') as txn_ym, 
+					ct.txn_type,
+					case 
+						when txn_type = 'deposit' then txn_amount 
+						when txn_type = 'purchase' then -txn_amount 
+						when txn_type = 'withdrawal' then -txn_amount 
+						else 0
+					end as balance_input
+				from data_bank.customer_transactions ct) tab2
+			group by tab2.customer_id, tab2.txn_ym
+			order by tab2.customer_id asc, tab2.txn_ym asc) tab3) balance_table
+	on balance_table.calendar_date = calendar_table.calendar_date and balance_table.customer_id = t1.customer_id
+	order by customer_id, calendar_date) tab_final
+	order by tab_final.customer_id, tab_final.calendar_date)
+select 
+	calendar_date,
+	customer_id,
+--	balance,
+--	_grp,
+	first_value(balance) over (partition by _grp order by customer_id, calendar_date) as balance_clean
+from balance_raw;
 
-   
-	select 
-		tab3.customer_id as customer_id,
-		tab3.txn_ym as calendar_date,
---		tab3.balance_delta,
-		tab3.balance_delta + lag(tab3.balance_delta, 1, 0) over(order by tab3.customer_id, tab3.txn_ym) as balance
-	from(
-		select 
-			tab2.customer_id,
-			tab2.txn_ym,
-			sum(tab2.balance_input) as balance_delta
-		from(
-			select 
-				ct.customer_id,
-				to_char(txn_date, 'YYYY_MM') as txn_ym, 
-				ct.txn_type,
-				case 
-					when txn_type = 'deposit' then txn_amount 
-					when txn_type = 'purchase' then -txn_amount 
-					when txn_type = 'withdrawal' then -txn_amount 
-					else 0
-				end as balance_input
-			from data_bank.customer_transactions ct) tab2
-		group by tab2.customer_id, tab2.txn_ym
-		order by tab2.customer_id asc, tab2.txn_ym asc) tab3;		
-	
 -- What is the percentage of customers who increase their closing balance by more than 5%?
+with balance_clean as(
+select 
+	balance_raw.calendar_date,
+	balance_raw.customer_id,
+	count(customer_id) over(order by customer_id, calendar_date) as id_counter,
+--	balance,
+--	_grp,
+	first_value(balance_raw.balance) over (partition by balance_raw._grp order by balance_raw.customer_id, balance_raw.calendar_date) as balance_clean
+from (
+	select 
+	 	tab_final.calendar_date,
+	 	tab_final.customer_id,
+	 	tab_final.balance,
+	 	count(tab_final.balance) over (order by tab_final.customer_id, tab_final.calendar_date) as _grp
+	 from(  
+	 select 
+	 	calendar_table.calendar_date,
+	 	t1.customer_id,
+	 	balance_table.balance
+	 FROM(
+		select 
+			to_char(generate_series(min(ct.txn_date), max(ct.txn_date), '1month')::date, 'YYYY_MM') AS calendar_date 
+			FROM data_bank.customer_transactions ct) calendar_table
+	CROSS JOIN (SELECT DISTINCT ct2.customer_id FROM data_bank.customer_transactions ct2) t1
+	left join (
+		select 
+			tab3.customer_id as customer_id,
+			tab3.txn_ym as calendar_date,
+	--		tab3.balance_delta,
+			tab3.balance_delta + lag(tab3.balance_delta, 1, 0) over(order by tab3.customer_id, tab3.txn_ym) as balance
+		from(
+			select 
+				tab2.customer_id,
+				tab2.txn_ym,
+				sum(tab2.balance_input) as balance_delta
+			from(
+				select 
+					ct.customer_id,
+					to_char(txn_date, 'YYYY_MM') as txn_ym, 
+					ct.txn_type,
+					case 
+						when txn_type = 'deposit' then txn_amount 
+						when txn_type = 'purchase' then -txn_amount 
+						when txn_type = 'withdrawal' then -txn_amount 
+						else 0
+					end as balance_input
+				from data_bank.customer_transactions ct) tab2
+			group by tab2.customer_id, tab2.txn_ym
+			order by tab2.customer_id asc, tab2.txn_ym asc) tab3) balance_table
+	on balance_table.calendar_date = calendar_table.calendar_date and balance_table.customer_id = t1.customer_id
+	order by customer_id, calendar_date) tab_final
+	order by tab_final.customer_id, tab_final.calendar_date) balance_raw)
+select 
+	balance_clean3.customer_id,
+	balance_clean3.perc_change
+from(
+	select 
+   	 	balance_clean2.customer_id,
+		avg(balance_clean2.balance_perc_change) as perc_change
+	from(
+		select 
+			calendar_date,
+			customer_id,
+			id_counter,
+			balance_clean,
+			case 
+				when round(abs(first_value(balance_clean) over(partition by customer_id)), 2) != 0 then round((last_value(balance_clean) over(partition by customer_id) - first_value(balance_clean) over(partition by customer_id)) / round(abs(first_value(balance_clean) over(partition by customer_id)), 2), 2) * 100
+				else  round((last_value(balance_clean) over(partition by customer_id) - first_value(balance_clean) over(partition by customer_id)) / 1, 2) * 100
+			end as balance_perc_change
+--			round((last_value(balance_clean) over(partition by customer_id) - first_value(balance_clean) over(partition by customer_id)) / round(abs(first_value(balance_clean) over(partition by customer_id)), 2), 2) * 100 as balance_perc_change
+--	last_value(balance_clean) over(partition by customer_id) as balance_last	
+--	first_value(balance_raw.balance) over (partition by balance_raw._grp order by balance_raw.customer_id, balance_raw.calendar_date) as balance_clean
+--	last_value(balance_clean) over(customer_id, calendar_date) as balance_last
+--	count(customer_id) over(order by customer_id, calendar_date)
+		from balance_clean) balance_clean2
+	group by balance_clean2.customer_id
+	order by balance_clean2.customer_id) balance_clean3
+where balance_clean3.perc_change > 5;
+
 
 -- C. Data Allocation Challenge
 -- To test out a few different hypotheses - the Data Bank team wants to run an experiment where different groups of customers would be allocated data using 3 different options:
