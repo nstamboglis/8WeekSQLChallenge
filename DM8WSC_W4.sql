@@ -210,12 +210,57 @@ ORDER BY
     t1.type,
     cal.date;
 
-   select to_char(generate_series(min(ct.txn_date), max(ct.txn_date), '1month')::date, 'YYYY_MM') AS order_date FROM data_bank.customer_transactions ct	
+   
+ select 
+ 	tab_final.calendar_date,
+ 	tab_final.customer_id,
+ 	case 
+ 		when tab_final.balance is not null then tab_final.balance
+ 		else lag(tab_final.balance, 1, 0) over(order by tab_final.customer_id, tab_final.calendar_date)
+ 	end as balance_complete
+ from(  
+ select 
+ 	calendar_table.calendar_date,
+ 	t1.customer_id,
+ 	balance_table.balance
+ FROM(
+	select 
+		to_char(generate_series(min(ct.txn_date), max(ct.txn_date), '1month')::date, 'YYYY_MM') AS calendar_date 
+		FROM data_bank.customer_transactions ct) calendar_table
+CROSS JOIN (SELECT DISTINCT ct2.customer_id FROM data_bank.customer_transactions ct2) t1
+left join (
+	select 
+		tab3.customer_id as customer_id,
+		tab3.txn_ym as calendar_date,
+--		tab3.balance_delta,
+		tab3.balance_delta + lag(tab3.balance_delta, 1, 0) over(order by tab3.customer_id, tab3.txn_ym) as balance
+	from(
+		select 
+			tab2.customer_id,
+			tab2.txn_ym,
+			sum(tab2.balance_input) as balance_delta
+		from(
+			select 
+				ct.customer_id,
+				to_char(txn_date, 'YYYY_MM') as txn_ym, 
+				ct.txn_type,
+				case 
+					when txn_type = 'deposit' then txn_amount 
+					when txn_type = 'purchase' then -txn_amount 
+					when txn_type = 'withdrawal' then -txn_amount 
+					else 0
+				end as balance_input
+			from data_bank.customer_transactions ct) tab2
+		group by tab2.customer_id, tab2.txn_ym
+		order by tab2.customer_id asc, tab2.txn_ym asc) tab3) balance_table
+on balance_table.calendar_date = calendar_table.calendar_date and balance_table.customer_id = t1.customer_id
+order by customer_id, calendar_date) tab_final; 
+ 
 
    
 	select 
-		tab3.customer_id as user_id,
-		tab3.txn_ym as as_of_date,
+		tab3.customer_id as customer_id,
+		tab3.txn_ym as calendar_date,
 --		tab3.balance_delta,
 		tab3.balance_delta + lag(tab3.balance_delta, 1, 0) over(order by tab3.customer_id, tab3.txn_ym) as balance
 	from(
