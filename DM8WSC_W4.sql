@@ -325,7 +325,6 @@ from(
 	order by balance_clean2.customer_id) balance_clean3
 where balance_clean3.perc_change > 5;
 
-
 -- C. Data Allocation Challenge
 -- To test out a few different hypotheses - the Data Bank team wants to run an experiment where different groups of customers would be allocated data using 3 different options:
 
@@ -338,6 +337,172 @@ where balance_clean3.perc_change > 5;
 -- customer balance at the end of each month
 -- minimum, average and maximum values of the running balance for each customer
 -- Using all of the data available - how much data would have been required for each option on a monthly basis?
+
+-- SOLUTION: Let's compare the options 
+-- Option 1: running customer balance column that includes the impact each transaction
+select 
+	tab2.customer_id,
+	tab2.txn_ym,
+	sum(tab2.balance_input) as running_balance
+from(
+	select 
+		ct.customer_id,
+		to_char(txn_date, 'YYYY_MM') as txn_ym, 
+		ct.txn_type,
+		case 
+			when txn_type = 'deposit' then txn_amount 
+			when txn_type = 'purchase' then -txn_amount 
+			when txn_type = 'withdrawal' then -txn_amount 
+			else 0
+		end as balance_input,
+		row_number() over (partition by ct.customer_id) as customer_transaction_id
+		from data_bank.customer_transactions ct) tab2
+group by tab2.customer_id, tab2.txn_ym, customer_transaction_id
+order by tab2.customer_id asc, tab2.txn_ym asc;
+
+-- Option 2: customer balance at the end of each month
+select 
+	tab2.customer_id,
+	tab2.txn_ym,
+	sum(tab2.balance_input) as running_balance
+from(
+	select 
+		ct.customer_id,
+		to_char(txn_date, 'YYYY_MM') as txn_ym, 
+		ct.txn_type,
+		case 
+			when txn_type = 'deposit' then txn_amount 
+			when txn_type = 'purchase' then -txn_amount 
+			when txn_type = 'withdrawal' then -txn_amount 
+			else 0
+		end as balance_input,
+		row_number() over (partition by ct.customer_id) as customer_transaction_id
+		from data_bank.customer_transactions ct) tab2
+group by tab2.customer_id, tab2.txn_ym
+order by tab2.customer_id asc, tab2.txn_ym asc;
+	
+-- Option 3: minimum, average and maximum values of the running balance for each customer
+with running_table as (
+	select 
+		tab3.customer_id,
+		tab3.txn_ym,
+		tab3.running_balance,
+		row_number() over (partition by tab3.customer_id) as running_balance_id	
+	from(
+		select 
+			tab2.customer_id,
+			tab2.txn_ym,
+			sum(tab2.balance_input) as running_balance
+		from(
+			select 
+				ct.customer_id,
+				to_char(txn_date, 'YYYY_MM') as txn_ym, 
+				ct.txn_type,
+				case 
+					when txn_type = 'deposit' then txn_amount 
+					when txn_type = 'purchase' then -txn_amount 
+					when txn_type = 'withdrawal' then -txn_amount 
+					else 0
+				end as balance_input,
+				row_number() over (partition by ct.customer_id) as customer_transaction_id
+				from data_bank.customer_transactions ct) tab2
+		group by tab2.customer_id, tab2.txn_ym, customer_transaction_id
+		order by tab2.customer_id asc, tab2.txn_ym asc) tab3)
+select 
+	running_table.customer_id,
+	running_table.txn_ym,
+--	running_table.running_balance_id,
+--	running_table.running_balance,
+	min(running_table.running_balance) over(order by running_table.customer_id, running_table.txn_ym, running_table.running_balance_id) as running_min,
+	round(avg(running_table.running_balance) over(order by running_table.customer_id, running_table.txn_ym, running_table.running_balance_id), 2) as running_avg,
+	max(running_table.running_balance) over(order by running_table.customer_id, running_table.txn_ym, running_table.running_balance_id) as running_max
+from running_table;
+
+-- Using all of the data available - how much data would have been required for each option on a monthly basis?
+
+-- ANSWER: I answer by setting up a temp table for every answer
+
+CREATE TEMPORARY TABLE solution_1 AS select 
+	tab2.customer_id,
+	tab2.txn_ym,
+	sum(tab2.balance_input) as running_balance
+from(
+	select 
+		ct.customer_id,
+		to_char(txn_date, 'YYYY_MM') as txn_ym, 
+		ct.txn_type,
+		case 
+			when txn_type = 'deposit' then txn_amount 
+			when txn_type = 'purchase' then -txn_amount 
+			when txn_type = 'withdrawal' then -txn_amount 
+			else 0
+		end as balance_input,
+		row_number() over (partition by ct.customer_id) as customer_transaction_id
+		from data_bank.customer_transactions ct) tab2
+group by tab2.customer_id, tab2.txn_ym, customer_transaction_id
+order by tab2.customer_id asc, tab2.txn_ym asc;
+
+create temporary table solution_2 as select 
+	tab2.customer_id,
+	tab2.txn_ym,
+	sum(tab2.balance_input) as running_balance
+from(
+	select 
+		ct.customer_id,
+		to_char(txn_date, 'YYYY_MM') as txn_ym, 
+		ct.txn_type,
+		case 
+			when txn_type = 'deposit' then txn_amount 
+			when txn_type = 'purchase' then -txn_amount 
+			when txn_type = 'withdrawal' then -txn_amount 
+			else 0
+		end as balance_input,
+		row_number() over (partition by ct.customer_id) as customer_transaction_id
+		from data_bank.customer_transactions ct) tab2
+group by tab2.customer_id, tab2.txn_ym
+order by tab2.customer_id asc, tab2.txn_ym asc;
+
+create temporary table solution_3 as with running_table as (
+	select 
+		tab3.customer_id,
+		tab3.txn_ym,
+		tab3.running_balance,
+		row_number() over (partition by tab3.customer_id) as running_balance_id	
+	from(
+		select 
+			tab2.customer_id,
+			tab2.txn_ym,
+			sum(tab2.balance_input) as running_balance
+		from(
+			select 
+				ct.customer_id,
+				to_char(txn_date, 'YYYY_MM') as txn_ym, 
+				ct.txn_type,
+				case 
+					when txn_type = 'deposit' then txn_amount 
+					when txn_type = 'purchase' then -txn_amount 
+					when txn_type = 'withdrawal' then -txn_amount 
+					else 0
+				end as balance_input,
+				row_number() over (partition by ct.customer_id) as customer_transaction_id
+				from data_bank.customer_transactions ct) tab2
+		group by tab2.customer_id, tab2.txn_ym, customer_transaction_id
+		order by tab2.customer_id asc, tab2.txn_ym asc) tab3)
+select 
+	running_table.customer_id,
+	running_table.txn_ym,
+--	running_table.running_balance_id,
+--	running_table.running_balance,
+	min(running_table.running_balance) over(order by running_table.customer_id, running_table.txn_ym, running_table.running_balance_id) as running_min,
+	round(avg(running_table.running_balance) over(order by running_table.customer_id, running_table.txn_ym, running_table.running_balance_id), 2) as running_avg,
+	max(running_table.running_balance) over(order by running_table.customer_id, running_table.txn_ym, running_table.running_balance_id) as running_max
+from running_table;
+
+SELECT 
+	pg_total_relation_size('solution_1') as size_sol1, 
+	pg_total_relation_size('solution_2') as size_sol2,
+	pg_total_relation_size('solution_3') as size_sol3;
+-- Solution 2 requires less space
 
 -- D. Extra Challenge
 -- Data Bank wants to try another option which is a bit more difficult to implement - they want to calculate data growth using an interest calculation, just like in a traditional savings account you might have with a bank.
