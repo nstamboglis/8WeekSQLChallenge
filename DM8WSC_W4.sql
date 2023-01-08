@@ -508,6 +508,75 @@ SELECT
 -- Data Bank wants to try another option which is a bit more difficult to implement - they want to calculate data growth using an interest calculation, just like in a traditional savings account you might have with a bank.
 
 -- If the annual interest rate is set at 6% and the Data Bank team wants to reward its customers by increasing their data allocation based off the interest calculated on a daily basis at the end of each day, how much data would be required for this option on a monthly basis?
+with balance_table as (
+	select 
+		balance_raw.calendar_date,
+		balance_raw.customer_id,
+		count(customer_id) over(order by customer_id, calendar_date) as id_counter,
+	--	balance,
+	--	_grp,
+		coalesce(first_value(balance_raw.balance) over (partition by balance_raw._grp order by balance_raw.customer_id, balance_raw.calendar_date), 0) as balance_clean
+	from (
+		select 
+		 	tab_final.calendar_date,
+		 	tab_final.customer_id,
+		 	tab_final.balance,
+		 	count(tab_final.balance) over (order by tab_final.customer_id, tab_final.calendar_date) as _grp
+		 from(  
+		 select 
+		 	calendar_table.calendar_date,
+		 	t1.customer_id,
+		 	balance_table.balance
+		 FROM(
+			select 
+				to_char(generate_series(min(ct.txn_date), max(ct.txn_date), '1day')::date, 'YYYY_MM_DD') AS calendar_date 
+				FROM data_bank.customer_transactions ct) calendar_table
+		CROSS JOIN (SELECT DISTINCT ct2.customer_id FROM data_bank.customer_transactions ct2) t1
+		left join (
+			select 
+				tab3.customer_id as customer_id,
+				tab3.txn_ym as calendar_date,
+		--		tab3.balance_delta,
+				tab3.balance_delta + lag(tab3.balance_delta, 1, 0) over(order by tab3.customer_id, tab3.txn_ym) as balance
+			from(
+				select 
+					tab2.customer_id,
+					tab2.txn_ym,
+					sum(tab2.balance_input) as balance_delta
+				from(
+					select 
+						ct.customer_id,
+						to_char(txn_date, 'YYYY_MM_DD') as txn_ym, 
+						ct.txn_type,
+						case 
+							when txn_type = 'deposit' then txn_amount 
+							when txn_type = 'purchase' then -txn_amount 
+							when txn_type = 'withdrawal' then -txn_amount 
+							else 0
+						end as balance_input
+					from data_bank.customer_transactions ct) tab2
+				group by tab2.customer_id, tab2.txn_ym
+				order by tab2.customer_id asc, tab2.txn_ym asc) tab3) balance_table
+		on balance_table.calendar_date = calendar_table.calendar_date and balance_table.customer_id = t1.customer_id
+		order by customer_id, calendar_date) tab_final
+		order by tab_final.customer_id, tab_final.calendar_date) balance_raw)
+select 
+	balance_table.calendar_date,
+	balance_table.customer_id,
+	balance_table.id_counter,
+	row_number() over(partition by customer_id) as customer_days,
+	balance_table.balance_clean,
+	coalesce(balance_table.balance_clean - lag(balance_table.balance_clean, 1) over (partition by customer_id), 0) as balance_delta,
+	balance_table.balance_clean * 6/365 * row_number() over(partition by customer_id) as balance_int
+from balance_table;
+
+-- add days from zero
+-- add variation on balance		
+		
+	
+
+
+
 
 -- Special notes:
 
