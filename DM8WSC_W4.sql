@@ -507,7 +507,9 @@ SELECT
 -- D. Extra Challenge
 -- Data Bank wants to try another option which is a bit more difficult to implement - they want to calculate data growth using an interest calculation, just like in a traditional savings account you might have with a bank.
 
--- If the annual interest rate is set at 6% and the Data Bank team wants to reward its customers by increasing their data allocation based off the interest calculated on a daily basis at the end of each day, how much data would be required for this option on a monthly basis?
+-- If the annual interest rate is set at 6% and the Data Bank team wants to reward its customers by increasing their data allocation based off the interest calculated on a daily basis at the end of each day, 
+-- how much data would be required for this option on a monthly basis?
+-- NOTE: The solution below assumes that customers won't pay negative interest
 with balance_table as (
 	select 
 		balance_raw.calendar_date,
@@ -561,14 +563,30 @@ with balance_table as (
 		order by customer_id, calendar_date) tab_final
 		order by tab_final.customer_id, tab_final.calendar_date) balance_raw)
 select 
-	balance_table.calendar_date,
-	balance_table.customer_id,
-	balance_table.id_counter,
-	row_number() over(partition by customer_id) as customer_days,
-	balance_table.balance_clean,
-	coalesce(balance_table.balance_clean - lag(balance_table.balance_clean, 1) over (partition by customer_id), 0) as balance_delta,
-	balance_table.balance_clean * 6/365 * row_number() over(partition by customer_id) as balance_int
-from balance_table;
+	tab2.calendar_date,
+	tab2.customer_id,
+	tab2.balance_clean + tab2.balance_int_adj as balance_clean
+from (
+	select 
+		tab1.calendar_date,
+		tab1.customer_id,
+		tab1.balance_clean,
+		case 
+			when tab1.balance_int >0 then balance_int
+			when tab1.balance_int <= 0 then 0
+		end as balance_int_adj
+	from(	
+		select 
+			balance_table.calendar_date,
+			balance_table.customer_id,
+			balance_table.id_counter,
+			row_number() over(partition by customer_id) as customer_days,
+			balance_table.balance_clean,
+			coalesce(balance_table.balance_clean - lag(balance_table.balance_clean, 1) over (partition by customer_id), 0) as balance_delta,
+			balance_table.balance_clean * 6/365 * row_number() over(partition by customer_id) as balance_int
+		from balance_table	
+	) tab1
+) tab2;
 
 -- add days from zero
 -- add variation on balance		
