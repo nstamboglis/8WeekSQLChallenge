@@ -121,3 +121,223 @@ FROM my_ds
 GROUP BY CONCAT(cast(my_ds.year as varchar), '-', cast(my_ds.month_number as character)), my_ds.region
 ORDER BY CONCAT(cast(my_ds.year as varchar), '-', cast(my_ds.month_number as character)), my_ds.region;
 
+-- 1.5 What is the total count of transactions for each platform
+with my_ds as (
+  SELECT 
+	TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE as week_date, 
+    extract(week from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as week_number, 
+    extract(month from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as month_number,
+  	extract(year from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as year,
+    extract(year from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as year_number,
+    platform,	
+  	region,
+    case
+    	when segment like '%1' then 'Young Adults'
+        when segment like '%2' then 'Middle Aged'
+        when segment like ANY(ARRAY['%3', '%4']) then 'Retirees'
+        when segment = 'null' then 'Unknown'
+     end as age_band,
+    case
+    	when segment like 'C%' then 'Couples'
+        when segment like 'F%' then 'Families'
+        when segment = 'null' then 'Unknown'
+     end as demographic,
+    case
+    	when segment != 'null' then segment
+        when segment = 'null' then 'Unknown'
+    end as segment,
+    customer_type,	
+    transactions,	
+    sales,
+    round((sales::numeric / transactions::numeric), 2) as avg_transaction 
+FROM data_mart.weekly_sales)
+SELECT
+	my_ds.platform,
+    sum(my_ds.transactions) as n_transactions
+FROM my_ds
+GROUP BY my_ds.platform
+ORDER BY my_ds.platform;
+
+-- 1.6 What is the percentage of sales for Retail vs Shopify for each month?
+with my_ds as (
+  SELECT 
+	TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE as week_date, 
+    extract(week from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as week_number, 
+    extract(month from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as month_number,
+  	extract(year from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as year,
+    extract(year from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as year_number,
+    platform,	
+  	region,
+    case
+    	when segment like '%1' then 'Young Adults'
+        when segment like '%2' then 'Middle Aged'
+        when segment like ANY(ARRAY['%3', '%4']) then 'Retirees'
+        when segment = 'null' then 'Unknown'
+     end as age_band,
+    case
+    	when segment like 'C%' then 'Couples'
+        when segment like 'F%' then 'Families'
+        when segment = 'null' then 'Unknown'
+     end as demographic,
+    case
+    	when segment != 'null' then segment
+        when segment = 'null' then 'Unknown'
+    end as segment,
+    customer_type,	
+    transactions,	
+    sales,
+    round((sales::numeric / transactions::numeric), 2) as avg_transaction 
+FROM data_mart.weekly_sales)
+SELECT 
+	tab1.year_month,
+    tab1.platform,
+    round((tab1.n_transactions::decimal / tab2.n_transactions_total::decimal), 2) as transactions_perc
+FROM(
+  SELECT
+      concat(year_number, month_number) as year_month,
+  	  my_ds.platform,
+      sum(my_ds.transactions) as n_transactions
+  FROM my_ds
+  GROUP BY concat(year_number, month_number), my_ds.platform
+) tab1
+LEFT JOIN (SELECT
+      concat(year_number, month_number) as year_month,
+      sum(my_ds.transactions) as n_transactions_total
+  FROM my_ds
+  GROUP BY concat(year_number, month_number)
+) tab2
+ON tab1.year_month = tab2.year_month
+ORDER BY tab1.year_month ASC, tab1.platform ASC;
+
+-- 1.7 What is the percentage of sales by demographic for each year in the dataset?
+with my_ds as (
+  SELECT 
+	TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE as week_date, 
+    extract(week from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as week_number, 
+    extract(month from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as month_number,
+  	extract(year from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as year,
+    extract(year from TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) as year_number,
+    platform,	
+  	region,
+    case
+    	when segment like '%1' then 'Young Adults'
+        when segment like '%2' then 'Middle Aged'
+        when segment like ANY(ARRAY['%3', '%4']) then 'Retirees'
+        when segment = 'null' then 'Unknown'
+     end as age_band,
+    case
+    	when segment like 'C%' then 'Couples'
+        when segment like 'F%' then 'Families'
+        when segment = 'null' then 'Unknown'
+     end as demographic,
+    case
+    	when segment != 'null' then segment
+        when segment = 'null' then 'Unknown'
+    end as segment,
+    customer_type,	
+    transactions,	
+    sales,
+    round((sales::numeric / transactions::numeric), 2) as avg_transaction 
+FROM data_mart.weekly_sales)
+SELECT 
+	tab1.year,
+    tab1.demographic,
+    round((tab1.n_transactions::decimal / tab2.n_transactions_total::decimal), 2) as transactions_perc
+FROM(
+  SELECT
+      my_ds.year,
+  	  my_ds.demographic,
+      sum(my_ds.transactions) as n_transactions
+  FROM my_ds
+  GROUP BY my_ds.year, my_ds.demographic
+) tab1
+LEFT JOIN (SELECT
+      my_ds.year,
+      sum(my_ds.transactions) as n_transactions_total
+  FROM my_ds
+  GROUP BY my_ds.year
+) tab2
+ON tab1.year = tab2.year
+ORDER BY tab1.year ASC, tab1.demographic ASC;
+
+-- 1.8 Which age_band and demographic values contribute the most to Retail sales?
+WITH my_ds AS (
+  SELECT 
+    TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE AS week_date, 
+    extract(week FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS week_number, 
+    extract(month FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS month_number,
+    extract(year FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS year,
+    extract(year FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS year_number,
+    platform,
+    region,
+    CASE
+      WHEN segment LIKE '%1' THEN 'Young Adults'
+      WHEN segment LIKE '%2' THEN 'Middle Aged'
+      WHEN segment LIKE ANY(ARRAY['%3', '%4']) THEN 'Retirees'
+      WHEN segment = 'null' THEN 'Unknown'
+    END AS age_band,
+    CASE
+      WHEN segment LIKE 'C%' THEN 'Couples'
+      WHEN segment LIKE 'F%' THEN 'Families'
+      WHEN segment = 'null' THEN 'Unknown'
+    END AS demographic,
+    CASE
+      WHEN segment != 'null' THEN segment
+      WHEN segment = 'null' THEN 'Unknown'
+    END AS segment,
+    customer_type,
+    transactions,
+    sales,
+    round((sales::numeric / transactions::numeric), 2) AS avg_transaction 
+  FROM data_mart.weekly_sales
+),
+tab1 AS (
+  SELECT
+    my_ds.year,
+    my_ds.demographic,
+    sum(my_ds.transactions) AS n_transactions
+  FROM my_ds
+  WHERE my_ds.platform = 'Retail'
+  GROUP BY my_ds.year, my_ds.demographic
+),
+tab2 AS (
+  SELECT
+    my_ds.year,
+    sum(my_ds.transactions) AS n_transactions_total
+  FROM my_ds
+  WHERE my_ds.platform = 'Retail'
+  GROUP BY my_ds.year
+),
+taba AS (
+  SELECT
+    my_ds.year,
+    my_ds.age_band,
+    sum(my_ds.transactions) AS n_transactions
+  FROM my_ds
+  WHERE my_ds.platform = 'Retail'
+  GROUP BY my_ds.year, my_ds.age_band
+),
+tabb AS (
+  SELECT
+    my_ds.year,
+    sum(my_ds.transactions) AS n_transactions_total
+  FROM my_ds
+  WHERE my_ds.platform = 'Retail'
+  GROUP BY my_ds.year
+)
+SELECT 
+  tab1.year,
+  tab1.demographic AS group_name,
+  round((tab1.n_transactions::decimal / tab2.n_transactions_total::decimal) * 100, 2) AS transactions_perc
+FROM tab1
+LEFT JOIN tab2 ON tab1.year = tab2.year
+UNION
+SELECT 
+  taba.year,
+  taba.age_band AS group_name,
+  round((taba.n_transactions::decimal / tabb.n_transactions_total::decimal) * 100, 2) AS transactions_perc
+FROM taba
+LEFT JOIN tabb ON taba.year = tabb.year
+ORDER BY year ASC, group_name ASC;
+
+-- 1.9 Can we use the avg_transaction column to find the average transaction size for each year for Retail vs Shopify? If not - how would you calculate it instead?
