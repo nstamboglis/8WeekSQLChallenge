@@ -341,3 +341,151 @@ LEFT JOIN tabb ON taba.year = tabb.year
 ORDER BY year ASC, group_name ASC;
 
 -- 1.9 Can we use the avg_transaction column to find the average transaction size for each year for Retail vs Shopify? If not - how would you calculate it instead?
+
+-- We cannot use the avg_transaction colum as it would imply using the mean of the mean. Instead we need to use the approach below:
+WITH my_ds AS (
+  SELECT 
+    TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE AS week_date, 
+    extract(week FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS week_number, 
+    extract(month FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS month_number,
+    extract(year FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS year_number,
+    platform,	
+    CASE
+      WHEN segment like '%1' THEN 'Young Adults'
+      WHEN segment like '%2' THEN 'Middle Aged'
+      WHEN segment like ANY(ARRAY['%3', '%4']) THEN 'Retirees'
+      WHEN segment IS NULL THEN 'Unknown'
+    END AS age_band,
+    CASE
+      WHEN segment like 'C%' THEN 'Couples'
+      WHEN segment like 'F%' THEN 'Families'
+      WHEN segment IS NULL THEN 'Unknown'
+    END AS demographic,
+    CASE
+      WHEN segment IS NOT NULL THEN segment
+      ELSE 'Unknown'
+    END AS segment,
+    customer_type,	
+    transactions,	
+    sales,
+    ROUND((sales::numeric / transactions::numeric), 2) AS avg_transaction 
+  FROM data_mart.weekly_sales
+),
+my_ds_analysis AS (
+  SELECT 
+    AVG(avg_transaction) AS avg_avg_transaction,
+    SUM(sales) AS total_sales,
+    SUM(transactions) AS total_transactions,
+    year_number, 
+    platform
+  FROM my_ds
+  GROUP BY year_number, platform
+)
+SELECT
+  year_number, 
+  platform,
+  ROUND(total_sales::numeric / total_transactions::numeric, 2) AS avg_transaction
+FROM my_ds_analysis
+ORDER BY my_ds_analysis.year_number, my_ds_analysis.platform;
+
+-- 3.1 Variation in growth 4 weeks before and after the packaging date
+WITH my_ds AS (
+  SELECT 
+  	TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE AS week_date, 
+    extract(week FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS week_number, 
+    extract(month FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS month_number,
+    extract(year FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS year_number,
+    platform,	
+    CASE
+      WHEN segment like '%1' THEN 'Young Adults'
+      WHEN segment like '%2' THEN 'Middle Aged'
+      WHEN segment like ANY(ARRAY['%3', '%4']) THEN 'Retirees'
+      WHEN segment IS NULL THEN 'Unknown'
+    END AS age_band,
+    CASE
+      WHEN segment like 'C%' THEN 'Couples'
+      WHEN segment like 'F%' THEN 'Families'
+      WHEN segment IS NULL THEN 'Unknown'
+    END AS demographic,
+    CASE
+      WHEN segment IS NOT NULL THEN segment
+      ELSE 'Unknown'
+    END AS segment,
+    customer_type,	
+    transactions,	
+    sales,
+    ROUND((sales::numeric / transactions::numeric), 2) AS avg_transaction 
+  FROM data_mart.weekly_sales
+),
+my_ds_analysis as(SELECT 
+	*,
+	CASE
+    	WHEN week_date >= '2020-06-15' then 'after'
+        ELSE 'before'
+    END as packaging_date,
+    EXTRACT(WEEK FROM my_ds.week_date)- EXTRACT(WEEK FROM '2020-06-15'::date) as packaging_date_diff
+FROM my_ds),
+	my_ds_results as (SELECT 
+	my_ds_analysis.packaging_date,
+    sum(my_ds_analysis.sales) as sales
+FROM my_ds_analysis
+WHERE ABS(my_ds_analysis.packaging_date_diff) <= 4
+GROUP BY my_ds_analysis.packaging_date
+ORDER BY my_ds_analysis.packaging_date DESC)
+SELECT
+	my_ds_results.packaging_date,
+    my_ds_results.sales,
+    round(my_ds_results.sales::numeric /(SELECT my_ds_results.sales FROM my_ds_results WHERE my_ds_results.packaging_date = 'before')::numeric, 2) * 100 as sales_growth,
+round(my_ds_results.sales::numeric /(SELECT sum(my_ds_results.sales) FROM my_ds_results)::numeric, 2) * 100 as sales_perc
+FROM my_ds_results;
+
+-- 3.2 Same as above, but in 12 weeks
+WITH my_ds AS (
+  SELECT 
+  	TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE AS week_date, 
+    extract(week FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS week_number, 
+    extract(month FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS month_number,
+    extract(year FROM TO_DATE(week_date, 'dd/mm/yy')::TIMESTAMP::DATE) AS year_number,
+    platform,	
+    CASE
+      WHEN segment like '%1' THEN 'Young Adults'
+      WHEN segment like '%2' THEN 'Middle Aged'
+      WHEN segment like ANY(ARRAY['%3', '%4']) THEN 'Retirees'
+      WHEN segment IS NULL THEN 'Unknown'
+    END AS age_band,
+    CASE
+      WHEN segment like 'C%' THEN 'Couples'
+      WHEN segment like 'F%' THEN 'Families'
+      WHEN segment IS NULL THEN 'Unknown'
+    END AS demographic,
+    CASE
+      WHEN segment IS NOT NULL THEN segment
+      ELSE 'Unknown'
+    END AS segment,
+    customer_type,	
+    transactions,	
+    sales,
+    ROUND((sales::numeric / transactions::numeric), 2) AS avg_transaction 
+  FROM data_mart.weekly_sales
+),
+my_ds_analysis as(SELECT 
+	*,
+	CASE
+    	WHEN week_date >= '2020-06-15' then 'after'
+        ELSE 'before'
+    END as packaging_date,
+    EXTRACT(WEEK FROM my_ds.week_date)- EXTRACT(WEEK FROM '2020-06-15'::date) as packaging_date_diff
+FROM my_ds),
+	my_ds_results as (SELECT 
+	my_ds_analysis.packaging_date,
+    sum(my_ds_analysis.sales) as sales
+FROM my_ds_analysis
+WHERE ABS(my_ds_analysis.packaging_date_diff) <= 12
+GROUP BY my_ds_analysis.packaging_date
+ORDER BY my_ds_analysis.packaging_date DESC)
+SELECT
+	my_ds_results.packaging_date,
+    my_ds_results.sales,
+    round(my_ds_results.sales::numeric /(SELECT my_ds_results.sales FROM my_ds_results WHERE my_ds_results.packaging_date = 'before')::numeric, 2) * 100 as sales_growth,
+round(my_ds_results.sales::numeric /(SELECT sum(my_ds_results.sales) FROM my_ds_results)::numeric, 2) * 100 as sales_perc
+FROM my_ds_results;
