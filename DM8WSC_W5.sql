@@ -489,3 +489,138 @@ SELECT
     round(my_ds_results.sales::numeric /(SELECT my_ds_results.sales FROM my_ds_results WHERE my_ds_results.packaging_date = 'before')::numeric, 2) * 100 as sales_growth,
 round(my_ds_results.sales::numeric /(SELECT sum(my_ds_results.sales) FROM my_ds_results)::numeric, 2) * 100 as sales_perc
 FROM my_ds_results;
+
+-- 3.3 How do the sale metrics for these 2 periods before and after compare with the previous years in 2018 and 2019?
+WITH my_ds AS (
+  SELECT 
+    TO_DATE(week_date, 'dd/mm/yy')::DATE AS week_date, 
+    EXTRACT(week FROM TO_DATE(week_date, 'dd/mm/yy')::DATE) AS week_number, 
+    EXTRACT(month FROM TO_DATE(week_date, 'dd/mm/yy')::DATE) AS month_number,
+    EXTRACT(year FROM TO_DATE(week_date, 'dd/mm/yy')::DATE) AS year_number,
+    platform,
+    CASE
+      WHEN segment LIKE '%1' THEN 'Young Adults'
+      WHEN segment LIKE '%2' THEN 'Middle Aged'
+      WHEN segment LIKE ANY(ARRAY['%3', '%4']) THEN 'Retirees'
+      ELSE 'Unknown'
+    END AS age_band,
+    CASE
+      WHEN segment LIKE 'C%' THEN 'Couples'
+      WHEN segment LIKE 'F%' THEN 'Families'
+      ELSE 'Unknown'
+    END AS demographic,
+    COALESCE(segment, 'Unknown') AS segment,
+    customer_type,	
+    transactions,	
+    sales,
+    ROUND((sales::numeric / transactions::numeric), 2) AS avg_transaction 
+  FROM data_mart.weekly_sales
+), my_ds_analysis AS (
+  SELECT *,
+    CASE
+      WHEN week_number BETWEEN 25 - 4 AND 25 + 3 THEN 'after'
+      ELSE 'before'
+    END AS packaging_date
+  FROM my_ds
+), my_ds_report AS (
+  SELECT
+    year_number, 
+    packaging_date,
+    SUM(sales) AS sales
+  FROM my_ds_analysis
+  WHERE packaging_date = 'before' OR packaging_date = 'after'
+  GROUP BY 
+    year_number, 
+    packaging_date
+), my_ds_report_join AS (
+  SELECT
+    r.year_number,
+    r.packaging_date,
+    r.sales,
+    r.sales / b.sales AS sales_growth,
+    r.sales / y.sales AS sales_perc
+  FROM my_ds_report r
+  LEFT JOIN my_ds_report b ON r.year_number = b.year_number AND b.packaging_date = 'before'
+  LEFT JOIN (SELECT year_number, SUM(sales) AS sales FROM my_ds_report GROUP BY year_number) y ON r.year_number = y.year_number
+)
+SELECT
+  year_number,
+  packaging_date,
+  sales,
+  ROUND(sales_growth * 100, 2) AS sales_growth,
+  ROUND(sales_perc * 100, 2) AS sales_perc
+FROM my_ds_report_join
+ORDER BY year_number ASC, packaging_date DESC;
+
+-- 4. Bonus questions
+
+-- Analysis based on the query below
+WITH my_ds AS (
+  SELECT 
+    TO_DATE(week_date, 'dd/mm/yy')::DATE AS week_date, 
+    EXTRACT(week FROM TO_DATE(week_date, 'dd/mm/yy')::DATE) AS week_number, 
+    EXTRACT(month FROM TO_DATE(week_date, 'dd/mm/yy')::DATE) AS month_number,
+    EXTRACT(year FROM TO_DATE(week_date, 'dd/mm/yy')::DATE) AS year_number,
+    platform,
+    CASE
+      WHEN segment LIKE '%1' THEN 'Young Adults'
+      WHEN segment LIKE '%2' THEN 'Middle Aged'
+      WHEN segment LIKE ANY(ARRAY['%3', '%4']) THEN 'Retirees'
+      ELSE 'Unknown'
+    END AS age_band,
+    CASE
+      WHEN segment LIKE 'C%' THEN 'Couples'
+      WHEN segment LIKE 'F%' THEN 'Families'
+      ELSE 'Unknown'
+    END AS demographic,
+    COALESCE(segment, 'Unknown') AS segment,
+  	region,
+    customer_type,	
+    transactions,	
+    sales,
+    ROUND((sales::numeric / transactions::numeric), 2) AS avg_transaction 
+  FROM data_mart.weekly_sales
+), my_ds_analysis AS (
+  SELECT *,
+    CASE
+      WHEN week_number BETWEEN 25 - 4 AND 25 + 3 THEN 'after'
+      ELSE 'before'
+    END AS packaging_date
+  FROM my_ds
+), my_ds_report AS (
+  SELECT
+    year_number, 
+    packaging_date,
+    region,
+    SUM(sales) AS sales
+  FROM my_ds_analysis
+  WHERE packaging_date = 'before' OR packaging_date = 'after'
+  GROUP BY 
+    year_number, 
+    packaging_date, 
+    region
+), my_ds_report_join AS (
+  SELECT
+    r.year_number,
+    r.packaging_date,
+    r.region,
+    r.sales,
+    r.sales::numeric / b.sales::numeric AS sales_growth,
+    r.sales::numeric / y.sales::numeric AS sales_perc
+  FROM my_ds_report r
+  LEFT JOIN my_ds_report b ON r.year_number = b.year_number AND b.packaging_date = 'before' AND b.region = r.region
+  LEFT JOIN (
+    SELECT year_number, region, SUM(sales) AS sales 
+    FROM my_ds_report 
+    GROUP BY year_number, region
+  ) y ON r.year_number = y.year_number AND r.region = y.region
+)
+SELECT
+  year_number,
+  packaging_date,
+  region,
+  sales,
+  ROUND(sales_growth * 100, 2) AS sales_growth,
+  ROUND(sales_perc * 100, 2) AS sales_perc
+FROM my_ds_report_join
+ORDER BY year_number ASC, packaging_date DESC, region DESC;
