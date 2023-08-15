@@ -113,3 +113,68 @@ FROM
     my_ds_flag AS mdf
 CROSS JOIN
     total_visits AS tv;
+
+-- 2.6 What is the percentage of visits which view the checkout page but do not have a purchase event?
+
+WITH my_ds AS (
+    SELECT
+        e.*,
+        ph.page_name AS hierarchy_page_name,
+  		ei.event_name as event_identifier_event_name
+    FROM
+        clique_bait.events e
+    LEFT JOIN
+        clique_bait.page_hierarchy ph ON e.page_id = ph.page_id
+    LEFT JOIN
+        clique_bait.event_identifier ei ON e.event_type = ei.event_type
+    -- LIMIT 10000
+),
+my_ds_checkout AS (
+    SELECT DISTINCT
+        visit_id
+    FROM
+        my_ds
+    WHERE
+        hierarchy_page_name = 'Checkout'
+),
+my_ds_purchase AS (
+    SELECT DISTINCT
+        visit_id
+    FROM
+        my_ds
+    WHERE
+        event_identifier_event_name = 'Purchase'
+),
+my_ds_joins AS (
+    SELECT
+        my_ds.*,
+        CASE
+            WHEN my_ds.visit_id IN (SELECT visit_id FROM my_ds_checkout) THEN 1
+            ELSE 0
+        END AS flag_checkout,
+        CASE
+            WHEN my_ds.visit_id IN (SELECT visit_id FROM my_ds_purchase) THEN 1
+            ELSE 0
+        END AS flag_purchase
+  	FROM
+        my_ds
+    LEFT JOIN
+        my_ds_checkout ON my_ds.visit_id = my_ds_checkout.visit_id
+  	LEFT JOIN
+        my_ds_purchase ON my_ds.visit_id = my_ds_purchase.visit_id
+), my_ds_analysis as(
+SELECT
+    distinct my_ds_joins.visit_id, my_ds_joins.flag_purchase
+FROM
+    my_ds_joins
+WHERE my_ds_joins.flag_checkout = 1
+), my_ds_report AS (
+SELECT
+	my_ds_analysis.flag_purchase,
+    COUNT(DISTINCT my_ds_analysis.visit_id) as n_visits
+FROM my_ds_analysis
+GROUP BY my_ds_analysis.flag_purchase)
+SELECT
+	my_ds_report.flag_purchase,
+    round(my_ds_report.n_visits::numeric / (SELECT sum(my_ds_report.n_visits) FROM my_ds_report)::numeric, 2) * 100 as perc_visits
+FROM my_ds_report;
