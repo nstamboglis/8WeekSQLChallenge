@@ -178,3 +178,74 @@ SELECT
 	my_ds_report.flag_purchase,
     round(my_ds_report.n_visits::numeric / (SELECT sum(my_ds_report.n_visits) FROM my_ds_report)::numeric, 2) * 100 as perc_visits
 FROM my_ds_report;
+
+-- 2.7 What are the top 3 pages by number of views?
+WITH my_ds AS (
+    select 
+        e.*,
+        ph.page_name AS hierarchy_page_name,
+  		ei.event_name as event_identifier_event_name
+    FROM
+        clique_bait.events e
+    LEFT JOIN
+       clique_bait.page_hierarchy ph ON e.page_id = ph.page_id
+    left JOIN
+        clique_bait.event_identifier ei ON e.event_type = ei.event_type
+)
+select 
+	my_ds.hierarchy_page_name,
+	count(my_ds.visit_id) as n_views
+from my_ds
+where my_ds.event_identifier_event_name = 'Page View'
+group by my_ds.hierarchy_page_name
+order by count(my_ds.visit_id) desc;
+
+-- 2.8 What is the number of views and cart adds for each product category?
+WITH my_ds AS (
+    select 
+        e.*,
+        ph.page_name AS hierarchy_page_name,
+  		ei.event_name as event_identifier_event_name
+    FROM
+        clique_bait.events e
+    LEFT JOIN
+       clique_bait.page_hierarchy ph ON e.page_id = ph.page_id
+    left JOIN
+        clique_bait.event_identifier ei ON e.event_type = ei.event_type
+)
+select 
+	my_ds.hierarchy_page_name,
+	my_ds.event_identifier_event_name,
+	count(visit_id) as n_visits
+from my_ds
+where my_ds.hierarchy_page_name not in ('Checkout', 'Home Page', 'Confirmation') and my_ds.event_identifier_event_name in ('Page View', 'Add to Cart')
+group by my_ds.hierarchy_page_name, my_ds.event_identifier_event_name
+order by count(visit_id) desc;
+
+-- 2.9 What are the top 3 products by purchases?
+WITH my_ds AS (
+    select 
+        e.*,
+        ph.page_name AS hierarchy_page_name,
+  		ei.event_name as event_identifier_event_name
+    FROM
+        clique_bait.events e
+    LEFT JOIN
+       clique_bait.page_hierarchy ph ON e.page_id = ph.page_id
+    left JOIN
+        clique_bait.event_identifier ei ON e.event_type = ei.event_type
+), purchase_visits as (
+	select 
+		distinct my_ds.visit_id
+	from my_ds
+	where my_ds.event_identifier_event_name = 'Purchase'
+)
+select 
+	my_ds.hierarchy_page_name,
+--	my_ds.event_identifier_event_name,
+	count(visit_id) as n_visits
+from my_ds
+where my_ds.visit_id in (select purchase_visits.visit_id from purchase_visits)
+ and my_ds.hierarchy_page_name not in ('Checkout', 'Home Page', 'Confirmation') and my_ds.event_identifier_event_name = 'Add to Cart'
+group by my_ds.hierarchy_page_name, my_ds.event_identifier_event_name
+order by count(visit_id) desc;
