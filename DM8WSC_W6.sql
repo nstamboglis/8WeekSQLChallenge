@@ -249,3 +249,257 @@ where my_ds.visit_id in (select purchase_visits.visit_id from purchase_visits)
  and my_ds.hierarchy_page_name not in ('Checkout', 'Home Page', 'Confirmation') and my_ds.event_identifier_event_name = 'Add to Cart'
 group by my_ds.hierarchy_page_name, my_ds.event_identifier_event_name
 order by count(visit_id) desc;
+
+-- 3. Product funnel analysis
+-- Create single table to verify: product views, product add to chart, product added but abandoned, product purchased
+
+WITH my_ds AS (
+    select 
+        e.*,
+        ph.page_name AS hierarchy_page_name,
+  		ei.event_name as event_identifier_event_name
+    FROM
+        clique_bait.events e
+    LEFT JOIN
+       clique_bait.page_hierarchy ph ON e.page_id = ph.page_id
+    left JOIN
+        clique_bait.event_identifier ei ON e.event_type = ei.event_type
+), purchase_visits as (
+	select 
+		distinct my_ds.visit_id
+	from my_ds
+	where my_ds.event_identifier_event_name = 'Purchase'
+), my_ds_analysis as (
+	select  
+		my_ds.visit_id,
+		my_ds.hierarchy_page_name,
+		my_ds.event_identifier_event_name,
+		case 
+			when my_ds.event_identifier_event_name = 'Page View' then 1
+			else 0
+		end flag_view,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' then 1
+			else 0
+		end flag_add,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' and (my_ds.visit_id not in (select purchase_visits.visit_id from purchase_visits)) then 1
+			else 0
+		end flag_add_abandoned,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' and (my_ds.visit_id in (select purchase_visits.visit_id from purchase_visits)) then 1
+			else 0
+		end flag_add_purchased
+	from my_ds
+)
+select 
+	my_ds_analysis.hierarchy_page_name,
+	sum(my_ds_analysis.flag_view) as n_views,
+	sum(my_ds_analysis.flag_add) as n_adds,
+	sum(my_ds_analysis.flag_add_abandoned) as n_abandons,
+	sum(my_ds_analysis.flag_add_purchased) as n_purchases
+from my_ds_analysis
+where my_ds_analysis.hierarchy_page_name not in ('Home Page', 'All Products', 'Confirmation', 'Checkout')
+group by my_ds_analysis.hierarchy_page_name
+order by my_ds_analysis.hierarchy_page_name;
+
+-- 3.B Same as above but by product category
+
+WITH my_ds AS (
+    select 
+        e.*,
+        ph.product_category AS hierarchy_product_category,
+  		ei.event_name as event_identifier_event_name
+    FROM
+        clique_bait.events e
+    LEFT JOIN
+       clique_bait.page_hierarchy ph ON e.page_id = ph.page_id
+    left JOIN
+        clique_bait.event_identifier ei ON e.event_type = ei.event_type
+), purchase_visits as (
+	select 
+		distinct my_ds.visit_id
+	from my_ds
+	where my_ds.event_identifier_event_name = 'Purchase'
+), my_ds_analysis as (
+	select  
+		my_ds.visit_id,
+		my_ds.hierarchy_product_category,
+		my_ds.event_identifier_event_name,
+		case 
+			when my_ds.event_identifier_event_name = 'Page View' then 1
+			else 0
+		end flag_view,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' then 1
+			else 0
+		end flag_add,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' and (my_ds.visit_id not in (select purchase_visits.visit_id from purchase_visits)) then 1
+			else 0
+		end flag_add_abandoned,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' and (my_ds.visit_id in (select purchase_visits.visit_id from purchase_visits)) then 1
+			else 0
+		end flag_add_purchased
+	from my_ds
+)
+select 
+	my_ds_analysis.hierarchy_product_category,
+	sum(my_ds_analysis.flag_view) as n_views,
+	sum(my_ds_analysis.flag_add) as n_adds,
+	sum(my_ds_analysis.flag_add_abandoned) as n_abandons,
+	sum(my_ds_analysis.flag_add_purchased) as n_purchases
+from my_ds_analysis
+where my_ds_analysis.hierarchy_product_category is not null
+group by my_ds_analysis.hierarchy_product_category
+order by my_ds_analysis.hierarchy_product_category;
+
+-- 3.C 
+
+-- First I create query for an analytical table
+WITH my_ds AS (
+    select 
+        e.*,
+        ph.page_name AS hierarchy_page_name,
+  		ei.event_name as event_identifier_event_name
+    FROM
+        clique_bait.events e
+    LEFT JOIN
+       clique_bait.page_hierarchy ph ON e.page_id = ph.page_id
+    left JOIN
+        clique_bait.event_identifier ei ON e.event_type = ei.event_type
+), purchase_visits as (
+	select 
+		distinct my_ds.visit_id
+	from my_ds
+	where my_ds.event_identifier_event_name = 'Purchase'
+), my_ds_analysis as (
+	select  
+		my_ds.visit_id,
+		my_ds.hierarchy_page_name,
+		my_ds.event_identifier_event_name,
+		case 
+			when my_ds.event_identifier_event_name = 'Page View' then 1
+			else 0
+		end flag_view,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' then 1
+			else 0
+		end flag_add,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' and (my_ds.visit_id not in (select purchase_visits.visit_id from purchase_visits)) then 1
+			else 0
+		end flag_add_abandoned,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' and (my_ds.visit_id in (select purchase_visits.visit_id from purchase_visits)) then 1
+			else 0
+		end flag_add_purchased
+	from my_ds
+), my_ds_report as(
+	select 
+		my_ds_analysis.hierarchy_page_name,
+		sum(my_ds_analysis.flag_view) as n_views,
+		sum(my_ds_analysis.flag_add) as n_adds,
+		sum(my_ds_analysis.flag_add_abandoned) as n_abandons,
+		sum(my_ds_analysis.flag_add_purchased) as n_purchases
+	from my_ds_analysis
+	where my_ds_analysis.hierarchy_page_name not in ('Home Page', 'All Products', 'Confirmation', 'Checkout')
+	group by my_ds_analysis.hierarchy_page_name
+	order by my_ds_analysis.hierarchy_page_name)
+select *
+from my_ds_report
+order by my_ds_report.n_views desc;
+
+-- Then I create a temp table with the results of the query
+CREATE TEMPORARY TABLE product_results as (
+WITH my_ds AS (
+    select 
+        e.*,
+        ph.page_name AS hierarchy_page_name,
+  		ei.event_name as event_identifier_event_name
+    FROM
+        clique_bait.events e
+    LEFT JOIN
+       clique_bait.page_hierarchy ph ON e.page_id = ph.page_id
+    left JOIN
+        clique_bait.event_identifier ei ON e.event_type = ei.event_type
+), purchase_visits as (
+	select 
+		distinct my_ds.visit_id
+	from my_ds
+	where my_ds.event_identifier_event_name = 'Purchase'
+), my_ds_analysis as (
+	select  
+		my_ds.visit_id,
+		my_ds.hierarchy_page_name,
+		my_ds.event_identifier_event_name,
+		case 
+			when my_ds.event_identifier_event_name = 'Page View' then 1
+			else 0
+		end flag_view,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' then 1
+			else 0
+		end flag_add,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' and (my_ds.visit_id not in (select purchase_visits.visit_id from purchase_visits)) then 1
+			else 0
+		end flag_add_abandoned,
+		case 
+			when my_ds.event_identifier_event_name = 'Add to Cart' and (my_ds.visit_id in (select purchase_visits.visit_id from purchase_visits)) then 1
+			else 0
+		end flag_add_purchased
+	from my_ds
+), my_ds_report as(
+	select 
+		my_ds_analysis.hierarchy_page_name,
+		sum(my_ds_analysis.flag_view) as n_views,
+		sum(my_ds_analysis.flag_add) as n_adds,
+		sum(my_ds_analysis.flag_add_abandoned) as n_abandons,
+		sum(my_ds_analysis.flag_add_purchased) as n_purchases
+	from my_ds_analysis
+	where my_ds_analysis.hierarchy_page_name not in ('Home Page', 'All Products', 'Confirmation', 'Checkout')
+	group by my_ds_analysis.hierarchy_page_name
+	order by my_ds_analysis.hierarchy_page_name)
+select *
+from my_ds_report);
+
+select *
+from product_results;
+
+-- Then I compute the results from the analysis table
+
+-- Which product had the most views, cart adds and purchases?
+select *
+from product_results
+order by product_results.n_views desc;
+
+-- Which product was most likely to be abandoned?
+
+select
+	product_results.hierarchy_page_name,
+	round(product_results.n_abandons::numeric / product_results.n_adds::numeric * 100, 2) as abandon_rate
+from product_results
+order by round(product_results.n_abandons::numeric / product_results.n_adds::numeric * 100, 2) desc;
+
+-- Which product had the highest view to purchase percentage?
+select 
+	product_results.hierarchy_page_name,
+	round(product_results.n_purchases::numeric / product_results.n_views::numeric * 100, 2) as purchase_to_view_rate
+from product_results
+order by round(product_results.n_purchases::numeric / product_results.n_views::numeric * 100, 2) desc;
+
+-- What is the average conversion rate from view to cart add?
+select 
+	product_results.hierarchy_page_name,
+	round(product_results.n_adds::numeric / product_results.n_views::numeric * 100, 2) as add_to_view_rate
+from product_results
+order by round(product_results.n_adds::numeric / product_results.n_views::numeric * 100, 2) desc;
+
+-- What is the average conversion rate from cart add to purchase?
+select 
+	product_results.hierarchy_page_name,
+	round(product_results.n_purchases::numeric / product_results.n_adds::numeric * 100, 2) as add_to_purcase_rate
+from product_results
+order by round(product_results.n_purchases::numeric / product_results.n_adds::numeric * 100, 2) desc;
