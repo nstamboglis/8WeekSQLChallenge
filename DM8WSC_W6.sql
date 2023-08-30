@@ -503,3 +503,52 @@ select
 	round(product_results.n_purchases::numeric / product_results.n_adds::numeric * 100, 2) as add_to_purcase_rate
 from product_results
 order by round(product_results.n_purchases::numeric / product_results.n_adds::numeric * 100, 2) desc;
+
+-- 4. Campaigns Analysis
+
+-- user_id
+-- visit_id
+-- visit_start_time: the earliest event_time for each visit
+-- page_views: count of page views for each visit
+-- cart_adds: count of product cart add events for each visit
+-- purchase: 1/0 flag if a purchase event exists for each visit
+-- campaign_name: map the visit to a campaign if the visit_start_time falls between the start_date and end_date
+-- impression: count of ad impressions for each visit
+-- click: count of ad clicks for each visit
+-- (Optional column) cart_products: a comma separated text value with products added to the cart sorted by the order they were added to the cart (hint: use the sequence_number)
+
+with page_views as (
+	select 
+		e.visit_id, 
+		count(*) as n_views
+	from clique_bait.events e
+	where e.event_type = 1
+	group by e.visit_id
+), chart_adds as (
+	select 
+		e.visit_id, 
+		count(*) as n_chart_adds
+	from clique_bait.events e
+	where e.event_type = 2
+	group by e.visit_id
+), purchase_visits as (
+	select distinct
+		e.visit_id,
+		1 as flag_purchase
+	from clique_bait.events e
+	where e.event_type = 3
+)
+select distinct 
+	u.user_id,
+	e.visit_id,
+	min(e.event_time) over (partition by e.visit_id) as visit_time,
+	page_views.n_views,
+	coalesce(chart_adds.n_chart_adds, 0) as chart_adds,
+	coalesce(purchase_visits.flag_purchase, 0) as flag_purchase
+from clique_bait.events e
+left join clique_bait.users u on e.cookie_id = u.cookie_id 
+left join page_views on e.visit_id = page_views.visit_id
+left join chart_adds on e.visit_id = chart_adds.visit_id
+left join purchase_visits on e.visit_id = purchase_visits.visit_id
+limit 100;
+
