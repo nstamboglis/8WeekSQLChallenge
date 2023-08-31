@@ -537,6 +537,20 @@ with page_views as (
 		1 as flag_purchase
 	from clique_bait.events e
 	where e.event_type = 3
+), impression_visits as (
+	select 
+		e.visit_id, 
+		count(*) as n_impressions
+	from clique_bait.events e
+	where e.event_type = 4
+	group by e.visit_id
+), click_visits as (
+	select 
+		e.visit_id, 
+		count(*) as n_visits
+	from clique_bait.events e
+	where e.event_type = 5
+	group by e.visit_id
 )
 select distinct 
 	u.user_id,
@@ -544,11 +558,56 @@ select distinct
 	min(e.event_time) over (partition by e.visit_id) as visit_time,
 	page_views.n_views,
 	coalesce(chart_adds.n_chart_adds, 0) as chart_adds,
-	coalesce(purchase_visits.flag_purchase, 0) as flag_purchase
+	coalesce(purchase_visits.flag_purchase, 0) as flag_purchase,
+	coalesce(ci.campaign_name, 'No Campaign') as campaign_name,
+	coalesce(impression_visits.n_impressions, 0) as n_impressions,
+	coalesce(click_visits.n_visits, 0) as n_clicks	
 from clique_bait.events e
 left join clique_bait.users u on e.cookie_id = u.cookie_id 
 left join page_views on e.visit_id = page_views.visit_id
 left join chart_adds on e.visit_id = chart_adds.visit_id
 left join purchase_visits on e.visit_id = purchase_visits.visit_id
-limit 100;
+left join clique_bait.campaign_identifier ci on e.event_time between ci.start_date and ci.end_date 
+left join impression_visits on e.visit_id = impression_visits.visit_id
+left join click_visits on e.visit_id = click_visits.visit_id;
 
+-- Coincise version of the query above
+WITH visit_metrics AS (
+    SELECT 
+        e.visit_id,
+        COUNT(*) FILTER (WHERE e.event_type = 1) AS n_views,
+        COUNT(*) FILTER (WHERE e.event_type = 2) AS n_chart_adds,
+        MAX(CASE WHEN e.event_type = 3 THEN 1 ELSE 0 END) AS flag_purchase,
+        COUNT(*) FILTER (WHERE e.event_type = 4) AS n_impressions,
+        COUNT(*) FILTER (WHERE e.event_type = 5) AS n_clicks
+    FROM 
+        clique_bait.events e
+    GROUP BY 
+        e.visit_id
+)
+SELECT DISTINCT 
+    u.user_id,
+    e.visit_id,
+    MIN(e.event_time) OVER (PARTITION BY e.visit_id) AS visit_time,
+    vm.n_views,
+    vm.n_chart_adds,
+    vm.flag_purchase,
+    COALESCE(ci.campaign_name, 'No Campaign') AS campaign_name,
+    vm.n_impressions,
+    vm.n_clicks	
+FROM 
+    clique_bait.events e
+LEFT JOIN 
+    clique_bait.users u ON e.cookie_id = u.cookie_id 
+LEFT JOIN 
+    visit_metrics vm ON e.visit_id = vm.visit_id
+LEFT JOIN 
+    clique_bait.campaign_identifier ci ON e.event_time BETWEEN ci.start_date AND ci.end_date;
+
+-- Campaing analysis
+-- What I'd analyse: 
+-- 1. Overall effectiveness of campaigns based on views and purchase
+-- 2. Whether impressions and clicks are associated with purchase
+-- 3. Churn of chart adds
+-- 4. At what time of the day do people buy more 
+-- 5. Recurrent buyers
